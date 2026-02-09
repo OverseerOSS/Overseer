@@ -13,6 +13,7 @@ import {
   getMonitorHistory,
   getStatusPagesList,
   getOrganizationName,
+  checkDatabaseReady
 } from "./actions";
 import { ExtensionMetadata } from "./extensions/types";
 import { Sidebar } from "./components/Sidebar";
@@ -57,8 +58,20 @@ export default function Dashboard() {
 
   // Load initial data
   useEffect(() => {
-    const loadDashboard = async () => {
-      try {
+    // 1. Check DB Health
+    checkDatabaseReady().then(status => {
+      if (!status.ready && status.error === 'setup_required') {
+         logout(); // Redirect to login -> setup
+         return;
+      }
+      
+      // 2. Load Data if ready
+      loadDashboard();
+    });
+  }, []); // Only run once on mount
+
+  const loadDashboard = async () => {
+    try {
         const monitorsList = await getServiceMonitors();
         if (monitorsList) {
           setMonitors(monitorsList);
@@ -66,25 +79,30 @@ export default function Dashboard() {
             setSelectedMonitorId(monitorsList[0].id);
           }
         }
-      } catch (err) {
-        console.error("Failed to load monitors", err);
-      }
+    } catch (err) { console.error(err); }
+
+    try {
+      const [installed, available, pages, name] = await Promise.all([
+        getInstalledExtensions().catch(() => []),
+        getAvailableExtensionsMetadata().catch(() => []),
+        getStatusPagesList().catch(() => []), 
+        getOrganizationName().catch(() => "Overseer")
+      ]);
       
-      const installed = await getInstalledExtensions().catch(() => []);
       setInstalledExtensions(installed);
-      
-      const available = await getAvailableExtensionsMetadata().catch(() => []);
       setAllExtensions(available);
-
-      const pages = await getStatusPagesList().catch(() => []);
       setStatusPages(pages);
-
-      const name = await getOrganizationName().catch(() => "Overseer");
       setOrgName(name);
-    };
+    } catch (e) { console.error(e); }
+  };
 
-    loadDashboard().catch(e => console.error(e));
+  /*
+  useEffect(() => {
+    // Moved to manual call
   }, [selectedMonitorId]);
+  */
+
+
 
   // Fetch monitor data when selection changes
   useEffect(() => {

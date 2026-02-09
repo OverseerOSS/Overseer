@@ -7,6 +7,16 @@ import { createSession, deleteSession } from "@/lib/session";
 import { getStatusPagesList } from "./status/actions";
 import { getSystemSetting, setSystemSetting } from "@/lib/settings";
 
+export async function checkDatabaseReady() {
+  try {
+    await db.user.count();
+    return { ready: true };
+  } catch (error: any) {
+    // P2021: Table does not exist
+    return { ready: false, error: error.code === 'P2021' ? 'setup_required' : error.message };
+  }
+}
+
 export async function getOrganizationName() {
   return await getSystemSetting("orgName", "Overseer");
 }

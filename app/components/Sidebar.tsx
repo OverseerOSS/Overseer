@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BarChart3, Bell, Globe, Layout, LogOut, Plus, Settings } from "lucide-react";
+import { BarChart3, Bell, Globe, Layout, LogOut, Plus, Settings, ShoppingBag } from "lucide-react";
 
 interface SidebarProps {
   monitors: Array<{ id: string; name: string }>;
@@ -65,6 +65,10 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
             <a href="/settings" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
               <Settings className="w-4 h-4" />
               Settings
+            </a>
+            <a href="/store" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+              <ShoppingBag className="w-4 h-4" />
+              Extension Store
             </a>
           </div>
         </div>
