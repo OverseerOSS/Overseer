@@ -2,32 +2,30 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { decrypt } from "@/lib/session";
 
-// 1. Specify protected and public routes
-const protectedRoutes = ["/"];
-const publicRoutes = ["/login", "/setup", "/api"];
-
 export default async function middleware(req: NextRequest) {
-  // 2. Check if the current route is protected or public
   const path = req.nextUrl.pathname;
-  const isProtectedRoute =
-    protectedRoutes.includes(path) || path.startsWith("/dashboard");
-  const isPublicRoute = publicRoutes.includes(path);
-
-  // 3. Decrypt the session from the cookie
+  
+  // Define public paths that do not require authentication
+  const isPublicPath = 
+    path === "/login" || 
+    path === "/setup" || 
+    path.startsWith("/status") || 
+    path.startsWith("/public");
+    
+  // Decrypt the session from the cookie
   const cookie = req.cookies.get("session")?.value;
   const session = await decrypt(cookie);
 
-  // 4. Redirect to /login if the user is not authenticated
-  if (isProtectedRoute && !session?.userId) {
-    return NextResponse.redirect(new URL("/login", req.nextUrl));
+  // 1. If user is NOT authenticated and tries to access a PROTECTED route
+  if (!session?.userId && !isPublicPath) {
+    const loginUrl = new URL("/login", req.nextUrl);
+    // Optional: Add ?next=path to redirect back after login
+    // loginUrl.searchParams.set("from", path);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Redirect to /dashboard (or /) if the user is authenticated
-  if (
-    isPublicRoute &&
-    session?.userId &&
-    !req.nextUrl.pathname.startsWith("/")
-  ) {
+  // 2. If user IS authenticated and tries to access Guest-Only routes (login, setup)
+  if (session?.userId && (path === "/login" || path === "/setup")) {
     return NextResponse.redirect(new URL("/", req.nextUrl));
   }
 
@@ -36,5 +34,6 @@ export default async function middleware(req: NextRequest) {
 
 // Routes Middleware should not run on
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\.png$).*)"],
+  // Exclude api, static files, images
+  matcher: ["/((?!api|_next/static|_next/image|.*\\.png$|.*\\.ico$).*)"],
 };

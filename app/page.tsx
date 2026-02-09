@@ -11,7 +11,8 @@ import {
   getGlobalConfig,
   fetchMonitorStatus,
   getMonitorHistory,
-  getStatusPagesList
+  getStatusPagesList,
+  getOrganizationName,
 } from "./actions";
 import { ExtensionMetadata } from "./extensions/types";
 import { Sidebar } from "./components/Sidebar";
@@ -39,6 +40,7 @@ interface ServiceInfo {
 export default function Dashboard() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [statusPages, setStatusPages] = useState<any[]>([]);
+  const [orgName, setOrgName] = useState("Overseer");
   const [installedExtensions, setInstalledExtensions] = useState<string[]>([]);
   const [allExtensions, setAllExtensions] = useState<ExtensionMetadata[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
@@ -56,23 +58,32 @@ export default function Dashboard() {
   // Load initial data
   useEffect(() => {
     const loadDashboard = async () => {
-      const monitorsList = await getServiceMonitors();
-      setMonitors(monitorsList);
-      if (monitorsList.length > 0 && !selectedMonitorId) {
-        setSelectedMonitorId(monitorsList[0].id);
+      try {
+        const monitorsList = await getServiceMonitors();
+        if (monitorsList) {
+          setMonitors(monitorsList);
+          if (monitorsList.length > 0 && !selectedMonitorId) {
+            setSelectedMonitorId(monitorsList[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load monitors", err);
       }
       
-      const installed = await getInstalledExtensions();
+      const installed = await getInstalledExtensions().catch(() => []);
       setInstalledExtensions(installed);
       
-      const available = await getAvailableExtensionsMetadata();
+      const available = await getAvailableExtensionsMetadata().catch(() => []);
       setAllExtensions(available);
 
-      const pages = await getStatusPagesList();
+      const pages = await getStatusPagesList().catch(() => []);
       setStatusPages(pages);
+
+      const name = await getOrganizationName().catch(() => "Overseer");
+      setOrgName(name);
     };
 
-    loadDashboard();
+    loadDashboard().catch(e => console.error(e));
   }, [selectedMonitorId]);
 
   // Fetch monitor data when selection changes
@@ -269,6 +280,8 @@ export default function Dashboard() {
         s Sidebar */}
       <Sidebar
         monitors={monitors}
+        statusPages={statusPages}
+        orgName={orgName}
         selectedMonitorId={selectedMonitorId || undefined}
         onLogout={logout}
       />

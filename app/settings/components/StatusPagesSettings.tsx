@@ -49,7 +49,7 @@ export default function StatusPagesSettings() {
   const handleDelete = async (slug: string) => {
     if (!confirm("Delete this status page?")) return;
     await deleteStatusPage(slug);
-    setPages(pages.filter(p => p.slug !== slug));
+    setPages(pages.filter((p: any) => p.slug !== slug));
   };
 
   return (
@@ -64,7 +64,7 @@ export default function StatusPagesSettings() {
                No public status pages created yet.
              </div>
            ) : (
-             pages.map(page => (
+             pages.map((page: any) => (
                <div key={page.id} className="flex items-center justify-between p-4 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg">
                  <div>
                    <div className="font-semibold">{page.title}</div>
@@ -122,7 +122,7 @@ export default function StatusPagesSettings() {
           <div>
             <label className="block text-sm font-medium mb-1">Monitors to Include</label>
             <div className="max-h-40 overflow-y-auto border rounded p-2 bg-white dark:bg-zinc-950 dark:border-zinc-700">
-               {monitors.map(m => (
+               {monitors.map((m: any) => (
                  <label key={m.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-zinc-900 rounded">
                    <input 
                      type="checkbox"

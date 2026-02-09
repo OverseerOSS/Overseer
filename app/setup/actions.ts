@@ -4,6 +4,7 @@ import { exec } from "child_process";
 import util from "util";
 import { db } from "@/lib/db";
 import { createAccount } from "../actions";
+import { setSystemSetting } from "@/lib/settings"; // New import
 import fs from "fs";
 import path from "path";
 import { Readable } from "stream";
@@ -26,10 +27,15 @@ export async function runMigration() {
   }
 }
 
-export async function createAdminUser(username: string, password: string) {
+export async function createAdminUser(username: string, password: string, orgName?: string) {
     if (!username || !password) {
         return { success: false, error: "Username and password required" };
     }
+
+    if (orgName) {
+        await setSystemSetting("orgName", orgName);
+    }
+
     return await createAccount(username, password);
 }
 

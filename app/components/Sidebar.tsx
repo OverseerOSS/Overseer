@@ -7,11 +7,12 @@ import { BarChart3, Bell, Globe, Layout, LogOut, Plus, Settings } from "lucide-r
 interface SidebarProps {
   monitors: Array<{ id: string; name: string }>;
   statusPages?: Array<{ id: string; slug: string; title: string }>;
+  orgName?: string;
   selectedMonitorId?: string;
   onLogout: () => void;
 }
 
-export function Sidebar({ monitors, statusPages = [], selectedMonitorId, onLogout }: SidebarProps) {
+export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", selectedMonitorId, onLogout }: SidebarProps) {
   const router = useRouter();
   const [expandStatusPages, setExpandStatusPages] = useState(false);
 
@@ -20,12 +21,14 @@ export function Sidebar({ monitors, statusPages = [], selectedMonitorId, onLogou
       {/* Logo/Brand */}
       <div className="h-16 border-b border-gray-200 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-100 rounded flex items-center justify-center">
-            <span className="text-green-700 font-bold text-sm">O</span>
+          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+            <span className="text-white font-bold text-sm">
+                {orgName.charAt(0).toUpperCase()}
+            </span>
           </div>
           <div>
-            <div className="text-xs font-semibold">openstatus</div>
-            <div className="text-xs text-gray-500">support-opensource</div>
+            <div className="text-sm font-semibold truncate max-w-[120px]" title={orgName}>{orgName}</div>
+            <div className="text-xs text-gray-500">Monitoring</div>
           </div>
         </div>
         <button className="text-gray-400 hover:text-gray-600">
@@ -72,7 +75,7 @@ export function Sidebar({ monitors, statusPages = [], selectedMonitorId, onLogou
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Status Pages
             </h3>
-            <a href="/settings/status-pages" className="text-gray-400 hover:text-gray-600">
+            <a href="/settings?tab=status-pages" className="text-gray-400 hover:text-gray-600">
               <Plus className="w-3 h-3" />
             </a>
           </div>

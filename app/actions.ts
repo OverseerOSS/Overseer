@@ -3,7 +3,23 @@
 import { getExtension, loadExtensions } from "./extensions/loader";
 import { ServiceInfo, ExtensionMetadata } from "./extensions/types";
 import { db } from "@/lib/db";
-import { createSession, deleteSession } from "@/lib/session";import { getStatusPagesList } from "./status/actions";
+import { createSession, deleteSession } from "@/lib/session";
+import { getStatusPagesList } from "./status/actions";
+import { getSystemSetting, setSystemSetting } from "@/lib/settings";
+
+export async function getOrganizationName() {
+  return await getSystemSetting("orgName", "Overseer");
+}
+
+export async function updateOrganizationName(name: string) {
+  try {
+    await setSystemSetting("orgName", name);
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update organization name" };
+  }
+}
 
 // Re-export specific actions if needed by client components that import from main actions
 export { getStatusPagesList };
