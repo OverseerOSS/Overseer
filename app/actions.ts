@@ -3,7 +3,10 @@
 import { getExtension, loadExtensions } from "./extensions/loader";
 import { ServiceInfo, ExtensionMetadata } from "./extensions/types";
 import { db } from "@/lib/db";
-import { createSession, deleteSession } from "@/lib/session";
+import { createSession, deleteSession } from "@/lib/session";import { getStatusPagesList } from "./status/actions";
+
+// Re-export specific actions if needed by client components that import from main actions
+export { getStatusPagesList };
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

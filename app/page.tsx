@@ -11,6 +11,7 @@ import {
   getGlobalConfig,
   fetchMonitorStatus,
   getMonitorHistory,
+  getStatusPagesList
 } from "./actions";
 import { ExtensionMetadata } from "./extensions/types";
 import { Sidebar } from "./components/Sidebar";
@@ -37,6 +38,7 @@ interface ServiceInfo {
 
 export default function Dashboard() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [statusPages, setStatusPages] = useState<any[]>([]);
   const [installedExtensions, setInstalledExtensions] = useState<string[]>([]);
   const [allExtensions, setAllExtensions] = useState<ExtensionMetadata[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
@@ -65,6 +67,9 @@ export default function Dashboard() {
       
       const available = await getAvailableExtensionsMetadata();
       setAllExtensions(available);
+
+      const pages = await getStatusPagesList();
+      setStatusPages(pages);
     };
 
     loadDashboard();
@@ -260,7 +265,8 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-white">
-      {/* Sidebar */}
+      {/*tatusPages={statusPages}
+        s Sidebar */}
       <Sidebar
         monitors={monitors}
         selectedMonitorId={selectedMonitorId || undefined}
