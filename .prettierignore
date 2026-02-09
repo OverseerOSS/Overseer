@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# Build outputs
+.next
+.vercel
+out
+build
+dist
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Prisma generated files
+prisma/migrations
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+*.log
+
+# Temp files
+tmpclaude-*-cwd
