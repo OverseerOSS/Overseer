@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   getInstalledExtensions,
@@ -18,6 +18,14 @@ import { getServiceMonitors, logout } from "../actions";
 import { ChevronRight, Save, Settings } from "lucide-react";
 
 export default function SettingsPage() {
+    return (
+        <Suspense fallback={<div>Loading Settings...</div>}>
+            <SettingsContent />
+        </Suspense>
+    );
+}
+
+function SettingsContent() {
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState(tab || "general");

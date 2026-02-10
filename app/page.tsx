@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   addServiceMonitor,
   deleteServiceMonitor,
@@ -22,6 +23,7 @@ import { MetricsGrid } from "./components/MetricsGrid";
 import { UptimeChart } from "./components/UptimeChart";
 import { LatencyChart } from "./components/LatencyChart";
 import { ChevronRight, Plus, X } from "lucide-react";
+import Link from "next/link";
 
 interface Monitor {
   id: string;
@@ -39,6 +41,17 @@ interface ServiceInfo {
 }
 
 export default function Dashboard() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading Overseer...</div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const monitorIdParam = searchParams.get("monitor");
+
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [statusPages, setStatusPages] = useState<any[]>([]);
   const [orgName, setOrgName] = useState("Overseer");
@@ -55,6 +68,15 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Sync selected monitor from URL
+  useEffect(() => {
+    if (monitorIdParam) {
+      setSelectedMonitorId(monitorIdParam);
+    } else if (monitors.length > 0 && !selectedMonitorId) {
+      setSelectedMonitorId(monitors[0].id);
+    }
+  }, [monitorIdParam, monitors, selectedMonitorId]);
 
   // Load initial data
   useEffect(() => {
@@ -291,9 +313,11 @@ export default function Dashboard() {
       p99: 0
     }));
   }, [historyData]);
-
-  return (
-    <div className="flex h-screen bg-white">
+Link href="/" className="hover:text-gray-900">Monitors</Link>
+              <ChevronRight className="w-4 h-4" />
+              <Link href={`/?monitor=${selectedMonitorId}`} className="hover:text-gray-900 font-medium text-gray-900 truncate max-w-[150px]">
+                {selectedMonitor?.name || "Monitor"}
+              </Link
       {/*tatusPages={statusPages}
         s Sidebar */}
       <Sidebar

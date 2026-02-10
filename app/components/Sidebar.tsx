@@ -1,8 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { BarChart3, Bell, Globe, Layout, LogOut, Plus, Settings, ShoppingBag } from "lucide-react";
+import Link from "next/link";
 
 interface SidebarProps {
   monitors: Array<{ id: string; name: string }>;
@@ -14,13 +15,14 @@ interface SidebarProps {
 
 export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", selectedMonitorId, onLogout }: SidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [expandStatusPages, setExpandStatusPages] = useState(false);
 
   return (
     <div className="w-64 border-r border-gray-200 bg-white h-screen flex flex-col fixed left-0 top-0">
       {/* Logo/Brand */}
       <div className="h-16 border-b border-gray-200 px-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
             <span className="text-white font-bold text-sm">
                 {orgName.charAt(0).toUpperCase()}
@@ -30,7 +32,7 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
             <div className="text-sm font-semibold truncate max-w-[120px]" title={orgName}>{orgName}</div>
             <div className="text-xs text-gray-500">Monitoring</div>
           </div>
-        </div>
+        </Link>
         <button className="text-gray-400 hover:text-gray-600">
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M7 10l5 5 5-5z" />
@@ -46,30 +48,30 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
             Workspace
           </h3>
           <div className="space-y-1">
-            <a href="#" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            <Link href="/" className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${pathname === "/" ? "bg-gray-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}>
               <Layout className="w-4 h-4" />
               Overview
-            </a>
-            <a href="#" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            </Link>
+            <Link href="/" className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${pathname === "/" ? "bg-gray-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}>
               <BarChart3 className="w-4 h-4" />
               Monitors
-            </a>
-            <a href="#" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            </Link>
+            <Link href="/status" className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${pathname === "/status" ? "bg-gray-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}>
               <Globe className="w-4 h-4" />
               Status Pages
-            </a>
-            <a href="#" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            </Link>
+            <Link href="#" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm text-gray-700">
               <Bell className="w-4 h-4" />
               Notifications
-            </a>
-            <a href="/settings" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            </Link>
+            <Link href="/settings" className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${pathname === "/settings" ? "bg-gray-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}>
               <Settings className="w-4 h-4" />
               Settings
-            </a>
-            <a href="/store" className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm">
+            </Link>
+            <Link href="/store" className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${pathname === "/store" ? "bg-gray-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}>
               <ShoppingBag className="w-4 h-4" />
               Extension Store
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -79,9 +81,9 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Status Pages
             </h3>
-            <a href="/settings?tab=status-pages" className="text-gray-400 hover:text-gray-600">
+            <Link href="/settings?tab=status-pages" className="text-gray-400 hover:text-gray-600">
               <Plus className="w-3 h-3" />
-            </a>
+            </Link>
           </div>
           <div className="space-y-1">
             {statusPages.length === 0 && (
@@ -94,7 +96,7 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
                 key={page.id}
                 href={`/status/${page.slug}`}
                 target="_blank"
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm text-gray-700"
               >
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                 {page.title}
@@ -117,11 +119,11 @@ export function Sidebar({ monitors, statusPages = [], orgName = "Overseer", sele
             {monitors.map(monitor => (
               <button
                 key={monitor.id}
-                onClick={() => router.push(`/monitors/${monitor.id}`)}
+                onClick={() => router.push(`/?monitor=${monitor.id}`)}
                 className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${
                   selectedMonitorId === monitor.id
-                    ? "bg-blue-50 text-blue-700"
-                    : "hover:bg-gray-100"
+                    ? "bg-blue-50 text-blue-700 font-medium"
+                    : "hover:bg-gray-100 text-gray-700"
                 }`}
               >
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
