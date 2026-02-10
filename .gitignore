@@ -42,8 +42,8 @@ yarn-error.log*
 next-env.d.ts
 
 # Plugins & Extensions
-# Ignore all directories inside app/extensions (which are plugins)
-app/extensions/*/
+# We now track plugins in the repo for automatic registration
+# app/extensions/*/ 
 
 # Prevent accidental commit of the external plugins repo if placed inside
 OverseerPlugins/
