@@ -29,15 +29,6 @@ model ServiceMonitor {
   createdAt   DateTime @default(now())
   order       Int      @default(0) // Display order
   metrics     Metric[]
-  statusPages StatusPage[]
-}
-
-model StatusPage {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  title       String
-  description String?
-  monitors    ServiceMonitor[]
 }
 
 model Metric {

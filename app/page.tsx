@@ -5,23 +5,18 @@ import { useSearchParams } from "next/navigation";
 import {
   addServiceMonitor,
   deleteServiceMonitor,
+  getDashboardData,
   getServiceMonitors,
-  getInstalledExtensions,
-  getAvailableExtensionsMetadata,
   logout,
   getGlobalConfig,
   fetchMonitorStatus,
   getMonitorHistory,
-  getStatusPagesList,
-  getOrganizationName,
   checkDatabaseReady
 } from "./actions";
 import { ExtensionMetadata } from "./extensions/types";
+import { getExtensionCard } from "./extensions/registry";
 import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
-import { MetricsGrid } from "./components/MetricsGrid";
-import { UptimeChart } from "./components/UptimeChart";
-import { LatencyChart } from "./components/LatencyChart";
 import { ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
 
@@ -53,7 +48,6 @@ function DashboardContent() {
   const monitorIdParam = searchParams.get("monitor");
 
   const [monitors, setMonitors] = useState<Monitor[]>([]);
-  const [statusPages, setStatusPages] = useState<any[]>([]);
   const [orgName, setOrgName] = useState("Overseer");
   const [installedExtensions, setInstalledExtensions] = useState<string[]>([]);
   const [allExtensions, setAllExtensions] = useState<ExtensionMetadata[]>([]);
@@ -61,6 +55,7 @@ function DashboardContent() {
   const [monitorData, setMonitorData] = useState<ServiceInfo[] | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [creationMetadata, setCreationMetadata] = useState<any>(null);
   const [selectedExtId, setSelectedExtId] = useState("");
   const [newMonitorName, setNewMonitorName] = useState("");
   const [newMonitorConfig, setNewMonitorConfig] = useState<Record<string, any>>({});
@@ -94,28 +89,21 @@ function DashboardContent() {
 
   const loadDashboard = async () => {
     try {
-        const monitorsList = await getServiceMonitors();
-        if (monitorsList) {
-          setMonitors(monitorsList);
-          if (monitorsList.length > 0 && !selectedMonitorId) {
-            setSelectedMonitorId(monitorsList[0].id);
+        const data = await getDashboardData();
+        
+        if (data.monitors) {
+          setMonitors(data.monitors);
+          if (data.monitors.length > 0 && !selectedMonitorId) {
+            setSelectedMonitorId(data.monitors[0].id);
           }
         }
-    } catch (err) { console.error(err); }
-
-    try {
-      const [installed, available, pages, name] = await Promise.all([
-        getInstalledExtensions().catch(() => []),
-        getAvailableExtensionsMetadata().catch(() => []),
-        getStatusPagesList().catch(() => []), 
-        getOrganizationName().catch(() => "Overseer")
-      ]);
-      
-      setInstalledExtensions(installed);
-      setAllExtensions(available);
-      setStatusPages(pages);
-      setOrgName(name);
-    } catch (e) { console.error(e); }
+        
+        setInstalledExtensions(data.installedExtensions);
+        setAllExtensions(data.allExtensions);
+        setOrgName(data.orgName);
+    } catch (err) { 
+      console.error(err); 
+    }
   };
 
   /*
@@ -126,37 +114,63 @@ function DashboardContent() {
 
 
 
-  // Fetch monitor data when selection changes
+  // Stream monitor data and live history
   useEffect(() => {
-    const fetchData = async () => {
-      if (selectedMonitorId) {
-        const result = await fetchMonitorStatus(selectedMonitorId);
-        if (result.success && result.data) {
-          setMonitorData(result.data);
+    if (!selectedMonitorId) {
+      setMonitorData(null);
+      setHistoryData([]);
+      return;
+    }
+
+    let isSubscribed = true;
+
+    // 1. Initial history fetch to populate graphs
+    getMonitorHistory(selectedMonitorId, 50).then(history => {
+      if (isSubscribed) {
+        setHistoryData(history);
+        if (history.length > 0 && !monitorData) {
+           setMonitorData(history[history.length - 1].data);
         }
       }
-    };
+    });
 
-    fetchData();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [selectedMonitorId]);
+    // 2. Setup SSE for live updates
+    const eventSource = new EventSource(`/api/monitors/${selectedMonitorId}/stream`);
 
-  // Fetch monitor history when selection changes
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (selectedMonitorId) {
-        // Fetch up to 50 data points for charts
-        const history = await getMonitorHistory(selectedMonitorId, 50);
-        setHistoryData(history);
-      } else {
-        setHistoryData([]);
+    const handleUpdate = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.data && isSubscribed) {
+          const newData = payload.data;
+          setMonitorData(newData);
+          
+          // Add to rolling history
+          setHistoryData(prev => {
+            const newHistoryPoint = {
+              timestamp: new Date().toISOString(),
+              data: newData
+            };
+            const updated = [...prev, newHistoryPoint];
+            return updated.slice(-100); // Keep last 100 points
+          });
+        }
+      } catch (err) {
+        // Silently handle
       }
     };
-    
-    fetchHistory();
-  }, [selectedMonitorId]);
+
+    eventSource.addEventListener('update', handleUpdate as any);
+
+    eventSource.onerror = (err) => {
+      console.warn("SSE connection interrupted, reconnecting...");
+    };
+
+    return () => {
+      isSubscribed = false;
+      eventSource.removeEventListener('update', handleUpdate as any);
+      eventSource.close();
+    };
+  }, [selectedMonitorId]); // Combined history and live data dependency
 
   // Load global config when extension changes
   useEffect(() => {
@@ -203,7 +217,16 @@ function DashboardContent() {
     setIsSubmitting(false);
 
     if (result.success) {
-      setIsAddModalOpen(false);
+      if (result.metadata) {
+        setCreationMetadata({
+          ...result.metadata,
+          monitorName: newMonitorName,
+          extensionId: selectedExtId
+        });
+      } else {
+        setIsAddModalOpen(false);
+      }
+      
       setNewMonitorName("");
       setNewMonitorConfig({});
       setSelectedExtId("");
@@ -244,169 +267,162 @@ function DashboardContent() {
     [allExtensions, selectedExtId]
   );
 
+  const ExtensionCard = useMemo(
+    () => selectedMonitor ? getExtensionCard(selectedMonitor.extensionId) : null,
+    [selectedMonitor]
+  );
+
   // Calculate metrics from monitor data
   const metrics = useMemo(() => {
     if (!monitorData || monitorData.length === 0) {
-      return {
-        uptime: 100,
-        degraded: 0,
-        failing: 0,
-        requests: 0,
-        p50: "0 ms",
-        p75: "0 ms",
-        p90: "0 ms",
-        p95: "0 ms",
-        p99: "0 ms",
-      };
+      return {};
     }
 
-    const running = monitorData.filter(d => d.status === "running").length;
-    const degraded = monitorData.filter(d => d.status === "degraded").length;
-    const failing = monitorData.filter(d => d.status === "failed").length;
-    const total = monitorData.length;
-
-    return {
-      uptime: total > 0 ? (running / total) * 100 : 0,
-      degraded,
-      failing,
-      requests: 0,
-      p50: "--",
-      p75: "--",
-      p90: "--",
-      p95: "--",
-      p99: "--",
-    };
+    return {};
   }, [monitorData]);
 
-  // Process history data for charts
-  const uptimeData = useMemo(() => {
-    if (!historyData || historyData.length === 0) return [];
-
-    return historyData.map((entry: any) => {
-      const services = entry.data || [];
-      const total = services.length;
-      
-      let success = 0;
-      if (total > 0) {
-        const running = services.filter((s: any) => s.status === "running").length;
-        success = Math.round((running / total) * 100);
-      }
-
-      return {
-        time: new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        success,
-        error: 100 - success
-      };
-    });
-  }, [historyData]);
-
-  const latencyData = useMemo(() => {
-    // Return empty array or placeholder if we don't have latency data yet
-    if (!historyData || historyData.length === 0) return [];
-    
-    // For now, map to 0s to keep chart rendering without error
-    // In future: Extract latency from ServiceInfo details if available
-    return historyData.map((entry: any) => ({
-      time: new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      p50: 0,
-      p95: 0,
-      p99: 0
-    }));
-  }, [historyData]);
-Link href="/" className="hover:text-gray-900">Monitors</Link>
-              <ChevronRight className="w-4 h-4" />
-              <Link href={`/?monitor=${selectedMonitorId}`} className="hover:text-gray-900 font-medium text-gray-900 truncate max-w-[150px]">
-                {selectedMonitor?.name || "Monitor"}
-              </Link
-      {/*tatusPages={statusPages}
-        s Sidebar */}
+  return (
+    <div className="flex h-screen bg-white">
       <Sidebar
         monitors={monitors}
-        statusPages={statusPages}
         orgName={orgName}
         selectedMonitorId={selectedMonitorId || undefined}
         onLogout={logout}
+        onDeleteMonitor={(id) => setDeleteTargetId(id)}
       />
 
       {/* Main Content */}
-      <div className="flex-1 ml-64 flex flex-col overflow-hidden">
+      <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white">
         {/* Header */}
-        <header className="border-b border-gray-200 bg-white">
-          <div className="px-8 py-4 flex items-center justify-between">
+        <header className="border-b-2 border-black bg-white sticky top-0 z-10">
+          <div className="px-10 py-6 flex items-center justify-between">
             {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <a href="#" className="hover:text-gray-900">Monitors</a>
-              <ChevronRight className="w-4 h-4" />
-              <a href="#" className="hover:text-gray-900">{selectedMonitor?.name || "Monitor"}</a>
-              <ChevronRight className="w-4 h-4" />
-              <span className="text-gray-900 font-medium">Overview</span>
+            <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-black">
+              <Link href="/" className="hover:line-through transition-all">Dashboard</Link>
+              <div className="w-2 h-2 bg-black rotate-45" />
+              <Link href={`/?monitor=${selectedMonitorId}`} className="font-bold truncate max-w-[200px]">
+                {selectedMonitor?.name || "Monitor"}
+              </Link>
+              <div className="w-1.5 h-1.5 bg-black/20" />
+              <span className="opacity-40 font-bold">Analytics</span>
             </div>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white font-black uppercase tracking-widest text-xs hover:bg-white hover:text-black border-2 border-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-5 h-5 stroke-[3]" />
               Add Monitor
             </button>
           </div>
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto bg-gray-50">
-          <div className="p-8">
+        <div className="flex-1 overflow-auto bg-white">
+          <div className="p-10 max-w-7xl mx-auto">
             {/* Title */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-1">
-                {selectedMonitor?.name || "Select a Monitor"}
+            <div className="mb-12 border-l-4 border-black pl-8 py-2">
+              <h1 className="text-6xl font-bold text-black uppercase tracking-tighter mb-2 leading-none">
+                {selectedMonitor?.name || "Overseer Dashboard"}
               </h1>
               {selectedMonitor && (
-                <p className="text-gray-600">Extension: {selectedMonitor.extensionId}</p>
+                <div className="flex items-center gap-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-black/40">
+                    Extension: <span className="text-black/80">{selectedMonitor.extensionId}</span>
+                  </p>
+                  <div className="w-1.5 h-1.5 bg-black/20" />
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-black/40">
+                    ID: <span className="text-black/80">{selectedMonitor.id}</span>
+                  </p>
+                </div>
               )}
             </div>
 
             {monitors.length === 0 ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-                <p className="text-gray-600 mb-6">No monitors configured yet.</p>
+              <div className="bg-white border-2 border-black p-20 text-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <p className="text-2xl font-bold uppercase tracking-tighter mb-10 text-black">No monitors configured yet.</p>
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+                  className="inline-flex items-center gap-4 px-10 py-5 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-lg hover:bg-white hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-6 h-6" />
                   Add Your First Monitor
                 </button>
               </div>
             ) : (
               <>
-                {/* Status Cards */}
-                <StatusCards
-                  uptime={metrics.uptime}
-                  degraded={metrics.degraded}
-                  failing={metrics.failing}
-                  requests={metrics.requests}
-                  lastChecked="Just now"
-                />
+                {/* Status Cards & Charts */}
+                {selectedMonitor?.extensionId !== 'dokploy' && (
+                  <>
+                    <StatusCards
+                      lastChecked="Just now"
+                    />
+                  </>
+                )}
 
-                {/* Metrics Grid */}
-                <MetricsGrid
-                  p50={metrics.p50}
-                  p75={metrics.p75}
-                  p90={metrics.p90}
-                  p95={metrics.p95}
-                  p99={metrics.p99}
-                  changes={{
-                    p50: 0,
-                    p75: 0,
-                    p90: 0,
-                    p95: 0,
-                    p99: 0,
-                  }}
-                />
+                {/* Resources List */}
+                {selectedMonitor && (
+                   <div className="mt-20">
+                     <div className="flex items-center justify-between mb-10 border-b-2 border-black pb-4">
+                        <h2 className="text-4xl font-bold text-black uppercase tracking-tighter flex items-center gap-4">
+                           Resources
+                           {monitorData && (
+                             <span className="bg-black text-white text-xs px-3 py-1 font-bold">
+                               {monitorData.length}
+                             </span>
+                           )}
+                        </h2>
+                     </div>
 
-                {/* Uptime Chart */}
-                <UptimeChart data={uptimeData} />
-
-                {/* Latency Chart */}
-                <LatencyChart data={latencyData} />
+                     {!monitorData ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                           {[1, 2, 3].map(i => (
+                             <div key={i} className="h-48 bg-white border-2 border-black animate-pulse shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]" />
+                           ))}
+                        </div>
+                     ) : monitorData.length === 0 ? (
+                        <div className="bg-white border-2 border-black p-16 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                           <p className="text-black font-bold uppercase tracking-widest opacity-50">No resources discovered for this monitor.</p>
+                        </div>
+                     ) : (
+                        <div className={`grid gap-8 ${
+                           monitorData.length === 1 ? 'grid-cols-1' : 
+                           monitorData.length === 2 ? 'grid-cols-1 lg:grid-cols-2' : 
+                           'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                        }`}>
+                           {monitorData.map(service => (
+                             <div key={service.id} className="bg-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex flex-col hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all">
+                                <div className="px-5 py-4 border-b-2 border-black flex items-center justify-between bg-white">
+                                   <div className="flex items-center gap-3">
+                                      <div className={`w-3 h-3 border-2 border-black ${
+                                         service.status === 'running' ? 'bg-green-500' :
+                                         service.status === 'degraded' ? 'bg-yellow-500' :
+                                         'bg-red-500'
+                                      }`} />
+                                      <span className="font-bold text-black uppercase tracking-tighter text-lg truncate max-w-[180px]" title={service.name}>
+                                        {service.name}
+                                      </span>
+                                   </div>
+                                   <span className="text-[10px] font-bold uppercase tracking-widest text-black opacity-50">
+                                      {service.type}
+                                   </span>
+                                </div>
+                                <div className="p-6 flex-1">
+                                   {ExtensionCard && (
+                                     <ExtensionCard 
+                                       service={service as any} 
+                                       history={historyData.map(h => ({
+                                          timestamp: h.timestamp,
+                                          data: h.data.find((s: any) => s.id === service.id)
+                                       })).filter(h => h.data)} 
+                                     />
+                                   )}
+                                </div>
+                             </div>
+                           ))}
+                        </div>
+                     )}
+                   </div>
+                )}
               </>
             )}
           </div>
@@ -415,153 +431,209 @@ Link href="/" className="hover:text-gray-900">Monitors</Link>
 
       {/* Add Monitor Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg border border-gray-200 max-w-lg w-full shadow-2xl">
-            <div className="px-6 py-6 border-b border-gray-200 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white border-2 border-black max-w-xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <div className="px-8 py-8 border-b-2 border-black flex items-center justify-between bg-black text-white">
               <div>
-                <h3 className="text-lg font-bold">Add Monitor</h3>
-                <p className="text-sm text-gray-600 mt-1">Create a new service monitor</p>
+                <h3 className="text-3xl font-bold uppercase tracking-tighter">
+                  {creationMetadata ? "Monitor Created" : "Add Monitor"}
+                </h3>
+                <p className="text-[10px] uppercase font-bold tracking-widest opacity-60 mt-2">
+                  {creationMetadata ? "Action required to complete setup" : "Deploy new monitoring endpoint"}
+                </p>
               </div>
               <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => { setIsAddModalOpen(false); setCreationMetadata(null); }}
+                className="p-2 border-2 border-white hover:bg-white hover:text-black transition-all"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
+            
+            {creationMetadata ? (
+              <div className="p-8 space-y-8">
+                <div className="bg-green-100 border-2 border-black p-6">
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-2 text-green-800">SUCCESS!</h4>
+                  <p className="text-xs font-bold text-black uppercase opacity-70">Monitor "{creationMetadata.monitorName}" has been added. However, some extensions require final steps on the server.</p>
+                </div>
 
-            <form onSubmit={handleAddMonitor} className="p-6 space-y-6">
-              {/* Monitor Name */}
-              <div>
-                <label className="block text-sm font-semibold mb-2">Monitor Name</label>
-                <input
-                  type="text"
-                  value={newMonitorName}
-                  onChange={e => setNewMonitorName(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Production API"
-                  required
-                />
-              </div>
+                {creationMetadata.extensionId === 'linux-server' && creationMetadata.publicKey && (
+                  <div className="space-y-6">
+                    <div className="border-l-4 border-black pl-4 py-1">
+                      <h5 className="text-xs font-bold uppercase tracking-widest">SSH Access Required</h5>
+                      <p className="text-[10px] font-bold opacity-50 uppercase mt-1">Run this command on your target server to authorize Overseer:</p>
+                    </div>
 
-              {/* Extension Type */}
-              <div>
-                <label className="block text-sm font-semibold mb-2">Extension</label>
-                <select
-                  value={selectedExtId}
-                  onChange={e => setSelectedExtId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
+                    <div className="relative group">
+                      <pre className="bg-black text-white p-5 text-[10px] font-mono break-all whitespace-pre-wrap border-2 border-black selection:bg-white selection:text-black">
+                        echo "{creationMetadata.publicKey}" &gt;&gt; ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+                      </pre>
+                      <button 
+                         onClick={() => {
+                           navigator.clipboard.writeText(`echo "${creationMetadata.publicKey}" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`);
+                         }}
+                         className="absolute top-2 right-2 bg-white text-black text-[10px] font-bold px-2 py-1 border border-black hover:bg-gray-200"
+                      >
+                        COPY
+                      </button>
+                    </div>
+
+                    <div className="bg-amber-50 border-2 border-black p-4 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                      Make sure you have <span className="underline">root</span> or a user with correct permissions. The connection will be tested on the next refresh.
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => { setIsAddModalOpen(false); setCreationMetadata(null); }}
+                  className="w-full py-4 bg-black text-white border-2 border-black font-bold uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-white hover:text-black transition-all active:translate-x-1 active:translate-y-1 active:shadow-none"
                 >
-                  <option value="">Select an extension...</option>
-                  {availableExtensions.map(ext => (
-                    <option key={ext.id} value={ext.id}>
-                      {ext.name}
-                    </option>
-                  ))}
-                </select>
+                  GOT IT, CLOSE
+                </button>
               </div>
+            ) : (
+              <form onSubmit={handleAddMonitor} className="p-8 space-y-8">
+                {/* Monitor Name */}
+                <div>
+                  <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black">Monitor Name</label>
+                  <input
+                    type="text"
+                    value={newMonitorName}
+                    onChange={e => setNewMonitorName(e.target.value)}
+                    className="w-full px-5 py-4 bg-white border-2 border-black font-bold uppercase tracking-widest text-sm focus:outline-none focus:bg-black focus:text-white transition-colors"
+                    placeholder="E.G. PRODUCTION API"
+                    required
+                  />
+                </div>
 
-              {/* Configuration Fields */}
-              {selectedExtensionDef && (
-                <div className="space-y-4 pt-4 border-t border-gray-200">
-                  <h4 className="text-sm font-semibold uppercase tracking-wide">Configuration</h4>
-                  {selectedExtensionDef.configSchema
-                    .filter(f => f.scope !== "global")
-                    .map(field => (
-                      <div key={field.key}>
-                        {field.type === "checkbox" ? (
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={newMonitorConfig[field.key] || false}
-                              onChange={e =>
-                                setNewMonitorConfig(prev => ({
-                                  ...prev,
-                                  [field.key]: e.target.checked,
-                                }))
-                              }
-                              className="w-4 h-4 rounded"
-                            />
-                            <span className="text-sm font-medium">{field.label}</span>
-                          </label>
-                        ) : (
-                          <>
-                            <label className="block text-sm font-medium mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            <input
-                              type={field.type === "password" ? "password" : "text"}
-                              value={newMonitorConfig[field.key] || ""}
-                              onChange={e =>
-                                setNewMonitorConfig(prev => ({
-                                  ...prev,
-                                  [field.key]: e.target.value,
-                                }))
-                              }
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder={String(field.defaultValue || "")}
-                              required={field.required}
-                            />
-                            {field.description && (
-                              <p className="text-xs text-gray-600 mt-1">{field.description}</p>
-                            )}
-                          </>
-                        )}
-                      </div>
+                {/* Extension Type */}
+                <div>
+                  <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black">Extension</label>
+                  <select
+                    value={selectedExtId}
+                    onChange={e => setSelectedExtId(e.target.value)}
+                    className="w-full px-5 py-4 border-2 border-black font-bold uppercase tracking-widest text-sm focus:outline-none bg-white font-bold"
+                    required
+                  >
+                    <option value="">SELECT AN EXTENSION...</option>
+                    {allExtensions.map(ext => (
+                      <option key={ext.id} value={ext.id}>
+                        {ext.name}
+                      </option>
                     ))}
+                  </select>
                 </div>
-              )}
 
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  {error}
+                {/* Configuration Fields */}
+                {selectedExtensionDef && (
+                  <div className="space-y-6 pt-8 border-t-2 border-black">
+                    <h4 className="text-sm font-bold uppercase tracking-widest bg-black text-white px-3 py-1 inline-block">Configuration</h4>
+                    {selectedExtensionDef.configSchema
+                      .filter(f => f.scope !== "global")
+                      .map(field => (
+                        <div key={field.key}>
+                          {field.type === "checkbox" ? (
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                              <div className="relative">
+                                <input
+                                  type="checkbox"
+                                  checked={newMonitorConfig[field.key] || false}
+                                  onChange={e =>
+                                    setNewMonitorConfig(prev => ({
+                                      ...prev,
+                                      [field.key]: e.target.checked,
+                                    }))
+                                  }
+                                  className="sr-only"
+                                />
+                                <div className={`w-6 h-6 border-2 border-black transition-all ${newMonitorConfig[field.key] ? 'bg-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}>
+                                  {newMonitorConfig[field.key] && (
+                                    <div className="flex items-center justify-center h-full">
+                                      <div className="w-2.5 h-2.5 bg-white" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-xs font-bold uppercase tracking-widest">{field.label}</span>
+                            </label>
+                          ) : (
+                            <>
+                              <label className="block text-xs font-bold mb-2 uppercase tracking-widest text-black">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1 font-bold">*</span>}
+                              </label>
+                              <input
+                                type={field.type === "password" ? "password" : "text"}
+                                value={newMonitorConfig[field.key] || ""}
+                                onChange={e =>
+                                  setNewMonitorConfig(prev => ({
+                                    ...prev,
+                                    [field.key]: e.target.value,
+                                  }))
+                                }
+                                className="w-full px-4 py-3 border-2 border-black bg-white font-bold uppercase tracking-widest text-xs focus:bg-black focus:text-white transition-colors"
+                                placeholder={String(field.defaultValue || "").toUpperCase()}
+                                required={field.required}
+                              />
+                              {field.description && (
+                                <p className="text-[10px] text-black font-bold uppercase tracking-widest mt-2 opacity-50">{field.description}</p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="p-4 bg-red-500 border-2 border-black text-white text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    {error}
+                  </div>
+                )}
+
+                {/* Buttons */}
+                <div className="flex gap-4 pt-8 border-t-2 border-black">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="flex-1 px-4 py-4 border-2 border-black font-bold uppercase tracking-widest text-sm hover:bg-black hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-4 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-white hover:text-black transition-all disabled:opacity-50 disabled:grayscale active:translate-x-1 active:translate-y-1 active:shadow-none"
+                  >
+                    {isSubmitting ? "CREATING..." : "CREATE MONITOR"}
+                  </button>
                 </div>
-              )}
-
-              {/* Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isSubmitting ? "Creating..." : "Create Monitor"}
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteTargetId && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg border border-gray-200 max-w-sm w-full shadow-2xl">
-            <div className="px-6 py-6 border-b border-gray-200">
-              <h3 className="text-lg font-bold">Delete Monitor?</h3>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white border-2 border-black max-w-sm w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <div className="px-8 py-8 border-b-2 border-black bg-black text-white">
+              <h3 className="text-2xl font-bold uppercase tracking-tighter">Delete Monitor?</h3>
             </div>
-            <div className="px-6 py-6">
-              <p className="text-gray-600">This action cannot be undone.</p>
+            <div className="px-8 py-8">
+              <p className="text-black font-bold uppercase tracking-widest text-xs opacity-60">This action cannot be undone. All history will be lost.</p>
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+            <div className="px-8 py-6 border-t-2 border-black flex gap-4">
               <button
                 onClick={() => setDeleteTargetId(null)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+                className="flex-1 px-4 py-4 border-2 border-black font-bold uppercase tracking-widest text-xs hover:bg-black hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(deleteTargetId)}
-                className="flex-1 px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700"
+                className="flex-1 px-4 py-4 border-2 border-black bg-red-500 text-white font-bold uppercase tracking-widest text-xs hover:bg-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
               >
                 Delete
               </button>

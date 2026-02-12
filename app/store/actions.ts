@@ -1,6 +1,6 @@
 "use server";
 
-import { getInstalledExtensions } from "../actions";
+import { getInstalledExtensions, getAvailableExtensionsMetadata } from "../actions";
 
 export interface MarketplacePlugin {
   id: string;
@@ -11,38 +11,36 @@ export interface MarketplacePlugin {
   url: string;
   icon?: string;
   isInstalled?: boolean;
+  isLocal?: boolean;
 }
 
 export async function fetchMarketplacePlugins(): Promise<MarketplacePlugin[]> {
   try {
     // 1. Fetch directory listing from GitHub
     // Using unauthenticated request (rate limits apply, 60/hr)
-    const res = await fetch("https://api.github.com/repos/OverseerOSS/plugins/contents", {
+    const githubPromise = fetch("https://api.github.com/repos/OverseerOSS/plugins/contents", {
       next: { revalidate: 3600 }, // Cache for 1 hour
       headers: {
         "Accept": "application/vnd.github+json",
         "User-Agent": "Overseer-App"
       }
-    });
-    
-    if (!res.ok) {
-        console.error("GitHub API Error", res.status, res.statusText);
-        return [];
-    }
-    
-    const items = await res.json();
-    if (!Array.isArray(items)) return [];
+    }).then(async res => {
+      if (!res.ok) return [];
+      const items = await res.json();
+      return Array.isArray(items) ? items.filter((i: any) => i.type === "dir" && !i.name.startsWith(".")) : [];
+    }).catch(() => []);
 
-    const dirs = items.filter((i: any) => i.type === "dir" && !i.name.startsWith("."));
-    
-    // 2. Get local installed plugins to mark status
-    const installedIds = await getInstalledExtensions();
+    // 2. Get local extensions and installed status
+    const [dirs, installedIds, localMetadata] = await Promise.all([
+      githubPromise,
+      getInstalledExtensions(),
+      getAvailableExtensionsMetadata()
+    ]);
 
-    // 3. Build plugin list
+    // 3. Build plugin list from GitHub
     const plugins: MarketplacePlugin[] = [];
 
     // Parallel fetch for metadata (package.json)
-    // We limit to 5 parallel requests to be nice to API
     const chunks = [];
     const chunkSize = 5;
     for (let i = 0; i < dirs.length; i += chunkSize) {
@@ -52,7 +50,6 @@ export async function fetchMarketplacePlugins(): Promise<MarketplacePlugin[]> {
     for (const chunk of chunks) {
         const promises = chunk.map(async (d: any) => {
             try {
-                // Fetch package.json from raw connection
                 const pkgRes = await fetch(`https://raw.githubusercontent.com/OverseerOSS/plugins/main/${d.name}/package.json`, {
                     next: { revalidate: 3600 }
                 });
@@ -84,7 +81,6 @@ export async function fetchMarketplacePlugins(): Promise<MarketplacePlugin[]> {
                     isInstalled: installedIds.includes(d.name)
                 };
             } catch (e) {
-                // Fallback if fetch fails
                 return {
                     id: d.name,
                     name: d.name,
@@ -99,6 +95,24 @@ export async function fetchMarketplacePlugins(): Promise<MarketplacePlugin[]> {
 
         const results = await Promise.all(promises);
         plugins.push(...results);
+    }
+
+    // 4. Add local built-in extensions that aren't in the GitHub list
+    const githubIds = new Set(plugins.map(p => p.id));
+    
+    for (const local of localMetadata) {
+      if (!githubIds.has(local.id)) {
+        plugins.push({
+          id: local.id,
+          name: local.name,
+          description: local.description,
+          author: "Built-in",
+          version: "Pre-installed",
+          url: "#",
+          isInstalled: installedIds.includes(local.id),
+          isLocal: true
+        });
+      }
     }
     
     return plugins;

@@ -38,14 +38,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white">
-      <div className="w-full max-w-md space-y-8 p-8 bg-white rounded-xl shadow-lg border border-gray-200">
+    <div className="flex min-h-screen items-center justify-center bg-white bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+      <div className="w-full max-w-md space-y-8 p-12 bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
         <div className="text-center">
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">
-            Sign in to Overseer
+          <h2 className="text-5xl font-bold tracking-tighter text-black uppercase">
+            Overseer
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Enter your credentials to access the monitoring dashboard
+          <p className="mt-4 text-[10px] text-black/40 font-bold uppercase tracking-widest">
+            AUTHENTICATION REQUIRED
           </p>
         </div>
 
@@ -54,7 +54,7 @@ export default function LoginPage() {
             <div>
               <label
                 htmlFor="username"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-[10px] font-bold text-black uppercase tracking-widest mb-2"
               >
                 Username
               </label>
@@ -63,8 +63,8 @@ export default function LoginPage() {
                 name="username"
                 type="text"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                placeholder="admin"
+                className="block w-full border-2 border-black bg-white px-4 py-3 text-black placeholder-gray-400 focus:bg-black focus:text-white focus:outline-none text-sm font-bold uppercase tracking-widest transition-colors"
+                placeholder="ADMIN"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
               />
@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-[10px] font-bold text-black uppercase tracking-widest mb-2"
               >
                 Password
               </label>
@@ -81,7 +81,7 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+                className="block w-full border-2 border-black bg-white px-4 py-3 text-black placeholder-gray-400 focus:bg-black focus:text-white focus:outline-none text-sm font-bold tracking-widest transition-colors"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
               />
@@ -89,7 +89,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="text-sm text-red-600 text-center bg-red-50 p-2 rounded">
+            <div className="text-[10px] text-red-600 text-center border-2 border-black p-3 font-bold uppercase tracking-widest">
               {error}
             </div>
           )}
@@ -97,9 +97,9 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="group relative flex w-full justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            className="group relative flex w-full justify-center border-2 border-black bg-black px-4 py-5 text-sm font-bold text-white uppercase tracking-[0.2em] hover:bg-white hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
           >
-            {isLoading ? "Signing in..." : "Sign in"}
+             {isLoading ? "AUTHENTICATING..." : "Enter Portal"}
           </button>
         </form>
       </div>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, memo } from "react";
+import { useMemo, memo, useEffect, useState } from "react";
 
 interface MetricGraphProps {
   data: number[];
   color?: string;
-  min?: number; // Y-axis min
-  max?: number; // Y-axis max
+  min?: number; 
+  max?: number; 
   label?: string;
   unit?: string;
   height?: string | number;
@@ -14,63 +14,99 @@ interface MetricGraphProps {
 
 export const MetricGraph = memo(function MetricGraph({
   data,
-  color = "#22c55e", // default to the green in the image
+  color = "#000000",
   min = 0,
   max = 100,
   label,
   unit = "%",
-  height = 150, // Taller by default for the detailed view
+  height = 80,
 }: MetricGraphProps) {
-  // Graph dimensions in logical units
   const viewBoxWidth = 1000;
   const viewBoxHeight = 100;
+  const maxPoints = 100;
+
+  // Use a fixed length for internal data to prevent "stretching"
+  const normalizedData = useMemo(() => {
+    const fixed = new Array(maxPoints).fill(null);
+    const len = Math.min(data.length, maxPoints);
+    const startIdx = maxPoints - len;
+    const dataStart = data.length - len;
+    
+    for (let i = 0; i < len; i++) {
+        fixed[startIdx + i] = data[dataStart + i];
+    }
+    return fixed;
+  }, [data]);
 
   const points = useMemo(() => {
-    if (data.length === 0) return "";
+    const step = viewBoxWidth / (maxPoints - 1);
     
-    // We want to fill the width.
-    const step = viewBoxWidth / (Math.max(data.length - 1, 1));
+    let pathString = "";
+    let first = true;
+    normalizedData.forEach((val, i) => {
+      if (val === null) return;
+      
+      const x = i * step;
+      const clamped = Math.max(min, Math.min(max, val));
+      const pct = (clamped - min) / (max - min);
+      const y = viewBoxHeight - (pct * viewBoxHeight);
+      
+      if (first) {
+        pathString = `M ${x},${y}`;
+        first = false;
+      } else {
+        pathString += ` L ${x},${y}`;
+      }
+    });
+    return pathString;
+  }, [normalizedData, min, max]);
+
+  const fillPoints = useMemo(() => {
+    if (!points) return "";
     
-    return data
-      .map((val, i) => {
-        const x = i * step;
-        // Clamp value
-        const clamped = Math.max(min, Math.min(max, val));
-        // Normalize 0-1
-        const pct = (clamped - min) / (max - min);
-        // Invert Y (SVG 0 is top)
-        const y = viewBoxHeight - (pct * viewBoxHeight); 
-        return `${x},${y}`;
-      })
-      .join(" ");
-  }, [data, min, max]);
+    // Find first valid x
+    let firstX = 0;
+    for (let i = 0; i < normalizedData.length; i++) {
+        if (normalizedData[i] !== null) {
+            firstX = i * (viewBoxWidth / (maxPoints - 1));
+            break;
+        }
+    }
+    return `${points} L ${viewBoxWidth},${viewBoxHeight} L ${firstX},${viewBoxHeight} Z`;
+  }, [points, normalizedData]);
 
   const latestValue = useMemo(() => 
     data.length > 0 ? data[data.length - 1] : 0,
     [data]
   );
 
-  // Memoize grid lines to avoid recalculating on every render
-  const gridLines = useMemo(() => 
-    [0, 25, 50, 75, 100].map(val => {
-      const pct = (val - min) / (max - min);
-      const y = viewBoxHeight - (pct * viewBoxHeight);
-      return { val, y };
-    }),
-    [min, max]
-  );
+  const formattedValue = useMemo(() => {
+    if (typeof latestValue !== 'number') return '0.0';
+    if (unit === 'B/s' && latestValue > 1024) {
+      return (latestValue / 1024).toFixed(1);
+    }
+    return latestValue.toFixed(1);
+  }, [latestValue, unit]);
+
+  const displayUnit = useMemo(() => {
+    if (unit === 'B/s' && latestValue > 1024) return 'KB/s';
+    return unit;
+  }, [latestValue, unit]);
 
   return (
-    <div className="flex flex-col w-full bg-[#0d1117] border border-[#30363d] rounded-lg p-4">
-      {/* Header */}
-      <div className="flex justify-between items-baseline mb-2">
-         <span className="text-gray-400 text-sm font-semibold">{label}</span>
-         <span className="text-2xl font-mono text-white">
-            {latestValue.toFixed(1)} <span className="text-sm text-gray-500">{unit}</span>
-         </span>
+    <div className="flex flex-col w-full bg-white border-2 border-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 transition-colors">
+      <div className="flex items-center justify-between mb-4">
+         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-black/40">{label}</span>
+         <div className="text-right">
+            <span className="text-xl font-bold text-black tracking-tighter">
+              {formattedValue}
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-black/40 ml-1">
+              {displayUnit}
+            </span>
+         </div>
       </div>
 
-      {/* Graph Area */}
       <div className="relative w-full" style={{ height }}>
         <svg
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
@@ -79,62 +115,38 @@ export const MetricGraph = memo(function MetricGraph({
           preserveAspectRatio="none"
           className="overflow-visible"
         >
-          <defs>
-              <linearGradient id={`grad-${label}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.25} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-          </defs>
+          {/* Grid lines */}
+          {[0, 50, 100].map(val => {
+            const y = viewBoxHeight - ((val - min) / (max - min) * viewBoxHeight);
+            return (
+              <line 
+                key={val}
+                x1="0" y1={y} x2={viewBoxWidth} y2={y}
+                stroke="#000" strokeWidth="1" strokeDasharray="4,4" strokeOpacity="0.05"
+              />
+            );
+          })}
 
-          {/* Grid Lines */}
-          {gridLines.map((line) => (
-             <g key={line.val}>
-                {/* Line */}
-                <line 
-                  x1="0" 
-                  y1={line.y} 
-                  x2={viewBoxWidth} 
-                  y2={line.y} 
-                  stroke="#30363d" 
-                  strokeWidth="1" 
-                  vectorEffect="non-scaling-stroke"
-                />
-             </g>
-          ))}
-
-          {/* Data Path */}
-          {data.length > 1 && (
+          {points && (
             <>
-                <path
-                    d={`M 0,${viewBoxHeight} L ${points} L ${viewBoxWidth},${viewBoxHeight} Z`}
-                    fill={`url(#grad-${label})`}
-                    stroke="none"
-                />
-                <polyline
-                    points={points}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke" 
-                />
+              <path
+                d={fillPoints}
+                fill={color}
+                fillOpacity="0.1"
+                className="transition-all duration-1000 ease-linear"
+              />
+              <path
+                d={points}
+                stroke={color}
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="transition-all duration-1000 ease-linear"
+              />
             </>
           )}
         </svg>
-
-        {/* Y-Axis Labels Overlay (Absolute positioning for crisp text) */}
-        <div className="absolute inset-0 pointer-events-none">
-             {gridLines.map(line => (
-                 <div 
-                    key={line.val}
-                    className="absolute left-0 text-[10px] text-gray-600 font-mono -translate-y-1/2 bg-[#0d1117] pr-1"
-                    style={{ top: `${(1 - (line.val - min)/(max-min)) * 100}%` }}
-                 >
-                     {line.val.toFixed(1)} {unit}
-                 </div>
-             ))}
-        </div>
       </div>
     </div>
   );

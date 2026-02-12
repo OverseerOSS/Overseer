@@ -1,3 +1,5 @@
+"use client";
+
 import dynamic from "next/dynamic";
 import { ComponentType } from "react";
 import { ExtensionCardProps } from "./types";
@@ -12,7 +14,7 @@ export function getExtensionCard(extensionId: string): ComponentType<ExtensionCa
       }),
     {
       loading: () => (
-        <div className="h-24 w-full animate-pulse bg-gray-100 dark:bg-zinc-900 rounded-lg" />
+        <div className="h-24 w-full bg-white border-2 border-black border-dashed animate-pulse" />
       ),
       ssr: false,
     }

@@ -66,7 +66,7 @@ Overseer comes with these monitoring extensions:
 
 ## Creating a Plugin
 
-Creating a monitoring extension is simple:
+Overseer uses a **drop-in plugin system**. Simply create a folder in `app/extensions/` and it will be automatically registered.
 
 ```typescript
 // app/extensions/my-plugin/index.ts

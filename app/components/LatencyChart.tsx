@@ -13,41 +13,51 @@ interface LatencyChartProps {
 
 export function LatencyChart({ data }: LatencyChartProps) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">Latency</h3>
-      <p className="text-sm text-gray-600 mb-6">Response time across all the regions</p>
-      
-      <p className="text-sm text-gray-700 mb-6">
-        The <span className="font-semibold">P50</span> quantile within a <span className="font-semibold">30 minutes</span> resolution
-      </p>
+    <div className="bg-white border-2 border-black p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <div className="flex items-center justify-between mb-8">
+        <h3 className="text-xl font-bold text-black uppercase tracking-tighter">Latency</h3>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-black border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]" />
+            <span className="text-[10px] font-bold uppercase tracking-widest">P99</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-gray-400 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]" />
+            <span className="text-[10px] font-bold uppercase tracking-widest">P95</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-gray-200 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]" />
+            <span className="text-[10px] font-bold uppercase tracking-widest">P50</span>
+          </div>
+        </div>
+      </div>
 
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={250}>
         <AreaChart data={data}>
-          <defs>
-            <linearGradient id="colorP50" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.8}/>
-              <stop offset="95%" stopColor="#fbbf24" stopOpacity={0.1}/>
-            </linearGradient>
-            <linearGradient id="colorP95" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#fcd34d" stopOpacity={0.8}/>
-              <stop offset="95%" stopColor="#fcd34d" stopOpacity={0.1}/>
-            </linearGradient>
-            <linearGradient id="colorP99" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#fde68a" stopOpacity={0.8}/>
-              <stop offset="95%" stopColor="#fde68a" stopOpacity={0.1}/>
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
-          <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-          <Tooltip 
-            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-            labelStyle={{ color: '#111827' }}
+          <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="#000" strokeOpacity={0.1} />
+          <XAxis 
+            dataKey="time" 
+            stroke="#000" 
+            axisLine={{ strokeWidth: 2 }}
+            tickLine={false}
+            tick={{ fontSize: 10, fontWeight: 'bold' }}
+            dy={10}
           />
-          <Legend />
-          <Area type="monotone" dataKey="p99" stroke="#fbbf24" fillOpacity={1} fill="url(#colorP99)" />
-          <Area type="monotone" dataKey="p95" stroke="#fcd34d" fillOpacity={1} fill="url(#colorP95)" />
-          <Area type="monotone" dataKey="p50" stroke="#fde68a" fillOpacity={1} fill="url(#colorP50)" />
+          <YAxis 
+            stroke="#000" 
+            axisLine={{ strokeWidth: 2 }}
+            tickLine={false}
+            tick={{ fontSize: 10, fontWeight: 'bold' }}
+            dx={-10}
+          />
+          <Tooltip 
+            contentStyle={{ backgroundColor: '#fff', border: '2px solid #000', borderRadius: '0px', boxShadow: '2px 2px 0px 0px rgba(0,0,0,1)' }}
+            labelStyle={{ color: '#000', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase', fontSize: '10px' }}
+            itemStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', padding: '0' }}
+          />
+          <Area type="monotone" dataKey="p99" stroke="#000" strokeWidth={3} fillOpacity={0.1} fill="#000" />
+          <Area type="monotone" dataKey="p95" stroke="#666" strokeWidth={2} fillOpacity={0.1} fill="#666" />
+          <Area type="monotone" dataKey="p50" stroke="#aaa" strokeWidth={2} fillOpacity={0.1} fill="#aaa" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

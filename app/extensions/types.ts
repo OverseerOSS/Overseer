@@ -1,10 +1,18 @@
-export type ServiceStatus = "running" | "stopped" | "error" | "unknown";
+export type ServiceStatus = 
+  | "running" 
+  | "stopped" 
+  | "error" 
+  | "unknown" 
+  | "degraded" 
+  | "failed"
+  | "starting"
+  | "offline";
 
 export interface ServiceInfo {
   id: string;
   name: string;
   type: string; // e.g., "application", "database", "container"
-  status: ServiceStatus;
+  status: ServiceStatus | string;
   startTime?: string; // ISO timestamp
   details?: Record<string, any>; // CPU, Memory, external ports, etc.
 }

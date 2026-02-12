@@ -12,7 +12,6 @@ import {
   updateOrganizationName
 } from "../actions";
 import { ExtensionMetadata } from "../extensions/types";
-import StatusPagesSettings from "./components/StatusPagesSettings";
 import { Sidebar } from "../components/Sidebar"; // Reuse sidebar layout
 import { getServiceMonitors, logout } from "../actions";
 import { ChevronRight, Save, Settings } from "lucide-react";
@@ -28,12 +27,13 @@ export default function SettingsPage() {
 function SettingsContent() {
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab");
+  const extId = searchParams.get("id");
   const [activeTab, setActiveTab] = useState(tab || "general");
   const [orgName, setOrgName] = useState("");
   const [monitors, setMonitors] = useState<any[]>([]);
   
   // Extension Settings State
-  const [activeExtId, setActiveExtId] = useState<string | null>(null);
+  const [activeExtId, setActiveExtId] = useState<string | null>(extId || null);
   const [configForm, setConfigForm] = useState<Record<string, any>>({});
   const [installedIds, setInstalledIds] = useState<string[]>([]);
   const [availableExtensions, setAvailableExtensions] = useState<ExtensionMetadata[]>([]);
@@ -41,7 +41,8 @@ function SettingsContent() {
 
   useEffect(() => {
     if (tab) setActiveTab(tab);
-  }, [tab]);
+    if (extId) setActiveExtId(extId);
+  }, [tab, extId]);
 
   useEffect(() => {
     // Load initial data
@@ -66,7 +67,7 @@ function SettingsContent() {
   }, [activeExtId]);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-white">
       <Sidebar 
         monitors={monitors} 
         orgName={orgName} 
@@ -75,48 +76,50 @@ function SettingsContent() {
         onLogout={logout} 
       />
 
-      <div className="flex-1 ml-64 flex flex-col overflow-hidden">
+      <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white">
         {/* Header */}
-        <header className="border-b border-gray-200 bg-white px-8 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="text-gray-900 font-medium flex items-center gap-2">
-                <Settings className="w-4 h-4" /> Settings
+        <header className="border-b-2 border-black bg-white">
+          <div className="px-10 py-6 flex items-center justify-between">
+            <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-black/40">
+              <span className="text-black flex items-center gap-3">
+                <Settings className="w-5 h-5" /> Settings
               </span>
+              <div className="w-1.5 h-1.5 bg-black/20" />
+              <span>{activeTab === 'general' ? 'General' : activeExtId}</span>
             </div>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-8">
-            <h1 className="text-2xl font-bold mb-6">System Settings</h1>
+        <div className="flex-1 overflow-auto bg-white">
+          <div className="p-10 max-w-7xl mx-auto">
+            <div className="mb-12 border-l-4 border-black pl-8 py-2">
+              <h1 className="text-6xl font-bold text-black uppercase tracking-tighter mb-2 leading-none">Settings</h1>
+              <p className="text-sm font-bold uppercase tracking-[0.2em] text-black opacity-40">Configure system & extensions</p>
+            </div>
 
-            <div className="flex gap-6">
+            <div className="flex gap-10">
                 {/* Settings Navigation */}
-                <div className="w-64 flex-shrink-0 space-y-1">
+                <div className="w-72 flex-shrink-0 space-y-2">
                     <button 
                         onClick={() => setActiveTab("general")}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === "general" ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}
+                        className={`w-full text-left px-5 py-4 text-xs font-bold uppercase tracking-widest border-2 border-black transition-all ${activeTab === "general" ? "bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "bg-white text-black hover:bg-gray-50"}`}
                     >
                         General
                     </button>
-                    <button 
-                        onClick={() => setActiveTab("status-pages")}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === "status-pages" ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}
-                    >
-                        Status Pages
-                    </button>
                     
-                    <div className="pt-4 pb-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <div className="pt-8 pb-3 px-5 text-[10px] font-bold text-black opacity-40 uppercase tracking-[0.2em]">
                         Extensions
                     </div>
                     {availableExtensions.map(ext => (
                         <button 
                             key={ext.id}
                             onClick={() => { setActiveTab("extension"); setActiveExtId(ext.id); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === "extension" && activeExtId === ext.id ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}
+                            className={`w-full text-left px-5 py-4 text-xs font-bold uppercase tracking-widest border-2 border-black transition-all ${activeTab === "extension" && activeExtId === ext.id ? "bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "bg-white text-black hover:bg-gray-50"}`}
                         >
                             <div className="flex items-center justify-between">
                                 <span>{ext.name}</span>
                                 {installedIds.includes(ext.id) && (
-                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                    <span className="w-2 h-2 bg-green-500 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"></span>
                                 )}
                             </div>
                         </button>
@@ -124,19 +127,19 @@ function SettingsContent() {
                 </div>
 
                 {/* Settings Content */}
-                <div className="flex-1 bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                <div className="flex-1 bg-white border-2 border-black p-10 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     {activeTab === "general" && (
-                        <div className="max-w-xl">
-                            <h2 className="text-lg font-semibold mb-4">General Configuration</h2>
-                            <div className="space-y-4">
+                        <div className="max-w-2xl">
+                            <h2 className="text-3xl font-bold mb-8 uppercase tracking-tighter">General</h2>
+                            <div className="space-y-8">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
-                                    <div className="flex gap-2">
+                                    <label className="block text-[10px] font-bold text-black uppercase tracking-widest mb-3">Organization Name</label>
+                                    <div className="flex gap-3">
                                         <input 
                                             value={orgName}
                                             onChange={(e) => setOrgName(e.target.value)}
-                                            className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                            placeholder="Enter organization name"
+                                            className="flex-1 px-5 py-4 border-2 border-black outline-none focus:bg-black focus:text-white transition-all font-bold uppercase text-xs"
+                                            placeholder="MY ORGANIZATION"
                                         />
                                         <button 
                                             onClick={async () => {
@@ -145,19 +148,15 @@ function SettingsContent() {
                                                 setIsSaving(false);
                                             }}
                                             disabled={isSaving}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                                            className="px-8 py-4 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-xs hover:bg-white hover:text-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
                                         >
-                                            {isSaving ? "Saving..." : "Update"}
+                                            {isSaving ? "SAVING..." : "UPDATE"}
                                         </button>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">Displayed in the sidebar and emails.</p>
+                                    <p className="text-[10px] text-black/40 mt-4 uppercase font-bold italic">Displayed in the sidebar and on status pages.</p>
                                 </div>
                             </div>
                         </div>
-                    )}
-
-                    {activeTab === "status-pages" && (
-                        <StatusPagesSettings />
                     )}
 
                     {activeTab === "extension" && activeExtId && (
@@ -184,6 +183,7 @@ function SettingsContent() {
         </div>
       </div>
     </div>
+  </div>
   );
 }
 
@@ -199,12 +199,12 @@ function ExtensionSettings({
 }: any) {
     return (
         <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-10 border-b-2 border-black pb-8">
                 <div>
-                    <h2 className="text-lg font-semibold">{extensionId}</h2>
-                    <p className="text-sm text-gray-500">Configure global settings for this extension</p>
+                    <h2 className="text-3xl font-bold uppercase tracking-tighter">{extensionId}</h2>
+                    <p className="text-[10px] text-black/40 uppercase font-bold tracking-widest mt-2">{isInstalled ? 'Active Extension' : 'Ready to Install'}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input 
                             type="checkbox" 
@@ -212,49 +212,49 @@ function ExtensionSettings({
                             checked={isInstalled}
                             onChange={(e) => onToggleInstall(e.target.checked)}
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        <span className="ml-3 text-sm font-medium text-gray-900">{isInstalled ? 'Enabled' : 'Disabled'}</span>
+                        <div className="w-12 h-7 bg-white border-2 border-black peer-focus:outline-none transition-all peer-checked:bg-black after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-black after:border-2 after:border-black after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 peer-checked:after:bg-white peer-checked:after:border-white"></div>
+                        <span className="ml-4 text-xs font-bold uppercase tracking-widest text-black">{isInstalled ? 'Enabled' : 'Disabled'}</span>
                     </label>
                 </div>
             </div>
             
             {!isInstalled ? (
-                <div className="p-4 bg-gray-50 rounded text-gray-500 text-sm text-center">
-                    Enable this extension to configure it.
+                <div className="p-16 border-2 border-black border-dashed bg-gray-50 text-black font-bold uppercase tracking-widest text-[10px] text-center">
+                    Extension must be enabled before configuration.
                 </div>
             ) : (
-                <div className="space-y-4 max-w-xl">
+                <div className="space-y-8 max-w-2xl">
                     {schema.filter((f: any) => f.scope !== 'monitor').map((field: any) => (
                         <div key={field.key}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                            <label className="block text-[10px] font-bold text-black uppercase tracking-widest mb-3">
+                                {field.label} {field.required && <span className="text-red-500 font-bold">*</span>}
                             </label>
                             {field.type === 'checkbox' ? (
-                                <input 
-                                    type="checkbox"
-                                    checked={config[field.key] ?? field.defaultValue ?? false}
-                                    onChange={e => setConfig({...config, [field.key]: e.target.checked})}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
+                                <div 
+                                    className={`w-10 h-10 border-2 border-black flex items-center justify-center cursor-pointer transition-all ${config[field.key] ? 'bg-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+                                    onClick={() => setConfig({...config, [field.key]: !config[field.key]})}
+                                >
+                                    {config[field.key] && <div className="w-4 h-4 bg-white" />}
+                                </div>
                             ) : (
                                 <input 
                                     type={field.type}
                                     value={config[field.key] ?? ""}
                                     onChange={e => setConfig({...config, [field.key]: e.target.value})}
-                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder={field.description} // Use description as placeholder if needed
+                                    className="w-full px-5 py-4 border-2 border-black outline-none focus:bg-black focus:text-white transition-all font-bold uppercase text-xs"
+                                    placeholder={field.description?.toUpperCase()} 
                                 />
                             )}
-                            {field.description && <p className="text-xs text-gray-500 mt-1">{field.description}</p>}
+                            {field.description && <p className="text-[10px] text-black/40 mt-3 font-bold uppercase italic">{field.description}</p>}
                         </div>
                     ))}
                     
-                    <div className="pt-4">
+                    <div className="pt-8 border-t-2 border-black">
                         <button 
                             onClick={onSave}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                            className="flex items-center gap-4 px-10 py-5 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-xs hover:bg-white hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                         >
-                            <Save className="w-4 h-4" /> Save Configuration
+                            <Save className="w-5 h-5" /> Save Configuration
                         </button>
                     </div>
                 </div>

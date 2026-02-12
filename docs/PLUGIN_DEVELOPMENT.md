@@ -7,9 +7,22 @@ Overseer allows developers to create extensions to monitor various types of infr
 Each extension lives in its own folder under `app/extensions/`.
 Example: `app/extensions/my-new-plugin/index.ts`
 
-The plugin must export a default object complying with the `MonitoringExtension` interface.
+**Registration is automatic.** Overseer scans the `app/extensions` directory at runtime. Any folder containing an `index.ts` that exports a valid `MonitoringExtension` object will be registered.
 
-## Interface Definitions
+## Export Requirements
+
+The plugin file (`index.ts`) can export the extension object in several ways:
+1. **Default Export**: `export default { ... }`
+2. **Named Export**: `export const myPluginExtension = { ... }`
+3. **Pattern Matching**: The loader will search all exports for an object matching the `MonitoringExtension` interface.
+
+## UI Components
+
+We recommend following a modular pattern for your plugin's UI:
+- `card.tsx`: The main entry point for the dashboard visualization.
+- `components/`: A subdirectory for specific charts, tables, or metric displays.
+
+This keeps your plugin self-contained and easy to maintain. (See the Dokploy plugin for a reference implementation).
 
 ### `MonitoringExtension`
 

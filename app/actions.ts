@@ -4,8 +4,23 @@ import { getExtension, loadExtensions } from "./extensions/loader";
 import { ServiceInfo, ExtensionMetadata } from "./extensions/types";
 import { db } from "@/lib/db";
 import { createSession, deleteSession } from "@/lib/session";
-import { getStatusPagesList } from "./status/actions";
 import { getSystemSetting, setSystemSetting } from "@/lib/settings";
+
+export async function getDashboardData() {
+  const [monitors, installedExtensions, allExtensions, orgName] = await Promise.all([
+    getServiceMonitors(),
+    getInstalledExtensions(),
+    getAvailableExtensionsMetadata(),
+    getOrganizationName()
+  ]);
+
+  return {
+    monitors,
+    installedExtensions,
+    allExtensions,
+    orgName
+  };
+}
 
 export async function checkDatabaseReady() {
   try {
@@ -31,8 +46,6 @@ export async function updateOrganizationName(name: string) {
   }
 }
 
-// Re-export specific actions if needed by client components that import from main actions
-export { getStatusPagesList };
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

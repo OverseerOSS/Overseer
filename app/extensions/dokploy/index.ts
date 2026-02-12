@@ -205,7 +205,7 @@ export const dokployExtension: MonitoringExtension = {
 
 
       // Helper to fetch container metrics
-      const fetchMetrics = async (appName: string): Promise<{ network: { input: number; output: number } } | undefined> => {
+      const fetchMetrics = async (appName: string): Promise<any | undefined> => {
         // Construct tRPC input for user.getContainerMetrics
         // Input: { url: "...", token: "...", dataPoints: "1", appName: "..." }
         const input = {
@@ -242,9 +242,15 @@ export const dokployExtension: MonitoringExtension = {
               };
 
               return {
+                cpu: latest.CPU,
+                memory: {
+                  used: toBytes(latest.Memory?.used || 0, latest.Memory?.unit),
+                  total: toBytes(latest.Memory?.total || 0, latest.Memory?.unit),
+                  percent: latest.Memory?.percent
+                },
                 network: {
-                  input: toBytes(latest.Network.input || 0, latest.Network.inputUnit),
-                  output: toBytes(latest.Network.output || 0, latest.Network.outputUnit)
+                  input: toBytes(latest.Network?.input || 0, latest.Network?.inputUnit),
+                  output: toBytes(latest.Network?.output || 0, latest.Network?.outputUnit)
                 }
               };
             }
@@ -335,7 +341,7 @@ export const dokployExtension: MonitoringExtension = {
               if (excludedList.includes(compose.name.toLowerCase())) continue;
 
               // Debug logging for compose status issues
-              if (!compose.applicationStatus && !compose.status) {
+              if (!compose.applicationStatus && !compose.status && !compose.composeStatus) {
                 console.log(`[Dokploy] Compose service missing status:`, JSON.stringify(compose, null, 2));
               }
 

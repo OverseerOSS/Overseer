@@ -6,10 +6,9 @@ const allowedOrigins = allowedOriginsEnv.split(",").map((origin) => origin.trim(
 
 const nextConfig: NextConfig = {
   /* config options here */
+  serverExternalPackages: ["ssh2"],
   experimental: {
     serverActions: {
-      // Trust forwarded headers in proxy environments (like GitHub Codespaces)
-      trustHostHeader: true,
       // Allow multiple origins for forwarded requests
       allowedOrigins,
     },

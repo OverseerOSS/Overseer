@@ -7,7 +7,11 @@ import path from "path";
  * Automatically loads all extensions from the app/extensions directory.
  * Each subdirectory is treated as a potential extension.
  */
+let cachedExtensions: MonitoringExtension[] | null = null;
+
 export async function loadExtensions(): Promise<MonitoringExtension[]> {
+  if (cachedExtensions) return cachedExtensions;
+  
   const extensions: MonitoringExtension[] = [];
   const extensionsDir = path.join(process.cwd(), "app", "extensions");
 
@@ -55,6 +59,7 @@ export async function loadExtensions(): Promise<MonitoringExtension[]> {
     console.error("[Loader] Failed to scan extensions directory:", err);
   }
   
+  cachedExtensions = extensions;
   return extensions;
 }
 
