@@ -14,7 +14,7 @@ import {
   checkDatabaseReady
 } from "./actions";
 import { ExtensionMetadata } from "./extensions/types";
-import { getExtensionCard } from "./extensions/registry";
+import { getExtensionCard, getExtensionSetupComponent } from "./extensions/registry";
 import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
 import { ChevronRight, Plus, X } from "lucide-react";
@@ -272,6 +272,16 @@ function DashboardContent() {
     [selectedMonitor]
   );
 
+  const SetupComponent = useMemo(
+    () => creationMetadata ? getExtensionSetupComponent(creationMetadata.extensionId) : null,
+    [creationMetadata]
+  );
+
+  const selectedExtensionMetadata = useMemo(() => {
+    if (!selectedMonitor) return null;
+    return allExtensions.find(e => e.id === selectedMonitor.extensionId);
+  }, [selectedMonitor, allExtensions]);
+
   // Calculate metrics from monitor data
   const metrics = useMemo(() => {
     if (!monitorData || monitorData.length === 0) {
@@ -351,7 +361,7 @@ function DashboardContent() {
             ) : (
               <>
                 {/* Status Cards & Charts */}
-                {selectedMonitor?.extensionId !== 'dokploy' && (
+                {!selectedExtensionMetadata?.displayOptions?.hideStatusCards && (
                   <>
                     <StatusCards
                       lastChecked="Just now"
@@ -449,40 +459,21 @@ function DashboardContent() {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             {creationMetadata ? (
               <div className="p-8 space-y-8">
-                <div className="bg-green-100 border-2 border-black p-6">
-                  <h4 className="text-sm font-bold uppercase tracking-widest mb-2 text-green-800">SUCCESS!</h4>
-                  <p className="text-xs font-bold text-black uppercase opacity-70">Monitor "{creationMetadata.monitorName}" has been added. However, some extensions require final steps on the server.</p>
-                </div>
-
-                {creationMetadata.extensionId === 'linux-server' && creationMetadata.publicKey && (
-                  <div className="space-y-6">
-                    <div className="border-l-4 border-black pl-4 py-1">
-                      <h5 className="text-xs font-bold uppercase tracking-widest">SSH Access Required</h5>
-                      <p className="text-[10px] font-bold opacity-50 uppercase mt-1">Run this command on your target server to authorize Overseer:</p>
-                    </div>
-
-                    <div className="relative group">
-                      <pre className="bg-black text-white p-5 text-[10px] font-mono break-all whitespace-pre-wrap border-2 border-black selection:bg-white selection:text-black">
-                        echo "{creationMetadata.publicKey}" &gt;&gt; ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
-                      </pre>
-                      <button 
-                         onClick={() => {
-                           navigator.clipboard.writeText(`echo "${creationMetadata.publicKey}" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`);
-                         }}
-                         className="absolute top-2 right-2 bg-white text-black text-[10px] font-bold px-2 py-1 border border-black hover:bg-gray-200"
-                      >
-                        COPY
-                      </button>
-                    </div>
-
-                    <div className="bg-amber-50 border-2 border-black p-4 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                      Make sure you have <span className="underline">root</span> or a user with correct permissions. The connection will be tested on the next refresh.
-                    </div>
+                {SetupComponent && (
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-black/60">
+                      Some extensions may require additional setup.
+                    </p>
+                    <SetupComponent metadata={creationMetadata} />
                   </div>
                 )}
+
+                <div className="bg-amber-50 border-2 border-black p-4 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                  Make sure you have <span className="underline">root</span> or a user with correct permissions. The connection will be tested on the next refresh.
+                </div>
 
                 <button
                   onClick={() => { setIsAddModalOpen(false); setCreationMetadata(null); }}

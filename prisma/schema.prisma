@@ -29,6 +29,7 @@ model ServiceMonitor {
   createdAt   DateTime @default(now())
   order       Int      @default(0) // Display order
   metrics     Metric[]
+  statusPages StatusPage[]
 }
 
 model Metric {
@@ -39,6 +40,19 @@ model Metric {
   data      String   // JSON string storing { cpu, ram, ... }
 
   @@index([monitorId, timestamp])
+}
+
+model StatusPage {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  showMetrics Boolean  @default(false)
+  showCpu     Boolean  @default(true)
+  showRam     Boolean  @default(true)
+  showNetwork Boolean  @default(true)
+  config      Json?    // Advanced config: { monitorId: { includedServices: string[] } }
+  monitors    ServiceMonitor[]
 }
 
 model SystemSettings {

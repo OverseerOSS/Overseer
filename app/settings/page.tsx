@@ -14,7 +14,9 @@ import {
 import { ExtensionMetadata } from "../extensions/types";
 import { Sidebar } from "../components/Sidebar"; // Reuse sidebar layout
 import { getServiceMonitors, logout } from "../actions";
-import { ChevronRight, Save, Settings } from "lucide-react";
+import { ChevronRight, ExternalLink, Plus, RefreshCw, Save, Settings, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
     return (
@@ -25,10 +27,10 @@ export default function SettingsPage() {
 }
 
 function SettingsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = searchParams.get("tab");
   const extId = searchParams.get("id");
-  const [activeTab, setActiveTab] = useState(tab || "general");
+  const [activeTab, setActiveTab] = useState("general");
   const [orgName, setOrgName] = useState("");
   const [monitors, setMonitors] = useState<any[]>([]);
   
@@ -40,9 +42,11 @@ function SettingsContent() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (tab) setActiveTab(tab);
-    if (extId) setActiveExtId(extId);
-  }, [tab, extId]);
+    if (extId) {
+        setActiveTab("extension");
+        setActiveExtId(extId);
+    }
+  }, [extId]);
 
   useEffect(() => {
     // Load initial data
@@ -71,8 +75,6 @@ function SettingsContent() {
       <Sidebar 
         monitors={monitors} 
         orgName={orgName} 
-        // We aren't passing status pages here for simplicity, or fetch them if needed
-        selectedMonitorId={undefined} 
         onLogout={logout} 
       />
 
@@ -85,7 +87,10 @@ function SettingsContent() {
                 <Settings className="w-5 h-5" /> Settings
               </span>
               <div className="w-1.5 h-1.5 bg-black/20" />
-              <span>{activeTab === 'general' ? 'General' : activeExtId}</span>
+              <span>
+                {activeTab === 'general' ? 'General' : 
+                 activeExtId}
+              </span>
             </div>
           </div>
         </header>
@@ -155,6 +160,19 @@ function SettingsContent() {
                                     </div>
                                     <p className="text-[10px] text-black/40 mt-4 uppercase font-bold italic">Displayed in the sidebar and on status pages.</p>
                                 </div>
+
+                                <div className="pt-10 border-t-2 border-black">
+                                    <label className="block text-[10px] font-bold text-black uppercase tracking-widest mb-3">System Actions</label>
+                                    <button 
+                                        onClick={() => {
+                                            router.refresh();
+                                        }}
+                                        className="flex items-center gap-4 px-8 py-4 border-2 border-black bg-white text-black font-bold uppercase tracking-widest text-xs hover:bg-black hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                                    >
+                                        <RefreshCw className="w-4 h-4" /> SYNC MONITORS
+                                    </button>
+                                    <p className="text-[10px] text-black/40 mt-4 uppercase font-bold italic">Re-scan plugins and refresh system state.</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -180,10 +198,10 @@ function SettingsContent() {
                     )}
                 </div>
             </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }
 

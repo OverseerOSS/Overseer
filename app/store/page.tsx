@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { Sidebar } from "../components/Sidebar";
 import { ShoppingBag, Download, Check, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
@@ -8,6 +8,14 @@ import { fetchMarketplacePlugins, MarketplacePlugin } from "./actions";
 import { getOrganizationName, logout } from "../actions";
 
 export default function ExtensionStorePage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center font-black uppercase tracking-widest">Loading Store...</div>}>
+      <StoreContent />
+    </Suspense>
+  );
+}
+
+function StoreContent() {
   const [plugins, setPlugins] = useState<MarketplacePlugin[]>([]);
   const [orgName, setOrgName] = useState("Overseer");
   const [loading, setLoading] = useState(true);

@@ -20,7 +20,12 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@components/*": ["app/components/*"],
+      "@actions": ["app/actions.ts"],
+      "@lib/*": ["lib/*"],
+      "@extensions/*": ["app/extensions/*"],
+      "@prisma/*": ["prisma/*"]
     }
   },
   "include": [

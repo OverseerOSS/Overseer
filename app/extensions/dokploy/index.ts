@@ -6,6 +6,9 @@ export const dokployExtension: MonitoringExtension = {
   id: "dokploy",
   name: "Dokploy Monitoring",
   description: "Monitor applications and databases managed by Dokploy",
+  displayOptions: {
+    hideStatusCards: true,
+  },
   configSchema: [
     {
       key: "baseUrl",
@@ -147,6 +150,8 @@ export const dokployExtension: MonitoringExtension = {
     }
 
     const projectsUrl = `${cleanUrl}/api/project.all`;
+    // Fallback/alternative tRPC URL for projects just in case
+    const projectsTrpcUrl = `${cleanUrl}/api/trpc/project.all?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%7D`;
     const metricsTokenUrl = `${cleanUrl}/api/trpc/user.getMetricsToken?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%7D`;
     
     console.log(`[Dokploy] Fetching status from: ${projectsUrl}`);
@@ -158,18 +163,36 @@ export const dokployExtension: MonitoringExtension = {
       };
 
       // Fetch projects
-      const response = await fetch(projectsUrl, {
+      let projectsResponse = await fetch(projectsUrl, {
         headers,
         cache: "no-store",
       });
 
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from Dokploy: ${response.status} ${response.statusText}`
-        );
+      let projects = [];
+      if (projectsResponse.ok) {
+        projects = await projectsResponse.json();
+      } else {
+        // Try TRPC fallback if direct API fails
+        projectsResponse = await fetch(projectsTrpcUrl, { headers, cache: "no-store" });
+        if (projectsResponse.ok) {
+          projects = await projectsResponse.json();
+        }
       }
 
-      const projects = await response.json();
+      // Handle tRPC response wrapping if present
+      if (projects && !Array.isArray(projects) && (projects as any).result?.data?.json) {
+        projects = (projects as any).result.data.json;
+      }
+      
+      // Some tRPC responses might be an array with one element
+      if (Array.isArray(projects) && projects.length === 1 && projects[0].result?.data?.json) {
+         projects = projects[0].result.data.json;
+      }
+
+      if (!Array.isArray(projects)) {
+        console.error("[Dokploy] Expected array of projects, got:", typeof projects, projects);
+        return [];
+      }
 
       // Try to fetch metrics token (best effort)
       let metricsToken = "metrics"; // Default
@@ -227,7 +250,11 @@ export const dokployExtension: MonitoringExtension = {
           
           const json = await res.json();
           // tRPC batch response: [{ result: { data: { json: [...] } } }]
-          const metricsArr = json?.[0]?.result?.data?.json;
+          // Sometimes it might not be a batch or differ slightly
+          let metricsArr = json?.[0]?.result?.data?.json;
+          if (!metricsArr && json?.result?.data?.json) {
+            metricsArr = json.result.data.json;
+          }
           
           if (Array.isArray(metricsArr) && metricsArr.length > 0) {
             const latest = metricsArr[metricsArr.length - 1];
@@ -264,22 +291,35 @@ export const dokployExtension: MonitoringExtension = {
       // Traverse all projects
       for (const project of projects) {
         // NOTE: Newer Dokploy versions nest resources under "environments"
-        // If "environments" array exists, we iterate it. Else we look at project root (for backward compat).
+        // If "environments" array exists and is not empty, we iterate it. 
+        // Else we look at project root (for backward compat).
         let resourceContainers = [project];
-        if (project.environments) {
+        if (Array.isArray(project.environments) && project.environments.length > 0) {
           resourceContainers = project.environments;
         }
 
         for (const container of resourceContainers) {
           // Parse Applications
-          if (container.applications) {
-            for (const app of container.applications) {
+          const appList = container.applications || container.application;
+          if (appList && Array.isArray(appList)) {
+            for (const app of appList) {
               if (excludedList.includes(app.name.toLowerCase())) continue;
 
               const status = mapStatus(app.applicationStatus || app.status);
               let metrics = undefined;
+              let serviceMetrics = undefined;
               if (status === "running" && app.appName) {
                  metrics = await fetchMetrics(app.appName);
+                 if (metrics) {
+                   serviceMetrics = {
+                     cpu: metrics.cpu,
+                     ram: metrics.memory?.percent,
+                     ramUsed: metrics.memory?.used,
+                     ramTotal: metrics.memory?.total,
+                     networkIn: metrics.network?.input,
+                     networkOut: metrics.network?.output
+                   };
+                 }
               }
 
               services.push({
@@ -288,6 +328,7 @@ export const dokployExtension: MonitoringExtension = {
                 type: "application",
                 status,
                 startTime: app.createdAt,
+                metrics: serviceMetrics,
                 details: {
                   ...displayConfig,
                   projectId: project.projectId,
@@ -301,43 +342,70 @@ export const dokployExtension: MonitoringExtension = {
             }
           }
 
-          // Parse Databases (MySQL, Postgres, Redis, Mongo, MariaDB)
-          const dbTypes = ["mysql", "postgres", "redis", "mongo", "mariadb"];
-          for (const dbType of dbTypes) {
-            if (container[dbType]) {
-              for (const db of container[dbType]) {
-                if (excludedList.includes(db.name.toLowerCase())) continue;
+          // Parse Databases
+          const databaseTypes = [
+            { key: "postgresql", label: "postgresql" },
+            { key: "postgresqls", label: "postgresql" },
+            { key: "mysql", label: "mysql" },
+            { key: "mysqls", label: "mysql" },
+            { key: "mariadb", label: "mariadb" },
+            { key: "mariadbs", label: "mariadb" },
+            { key: "mongodb", label: "mongodb" },
+            { key: "mongodbs", label: "mongodb" },
+            { key: "redis", label: "redis" },
+            { key: "redises", label: "redis" },
+          ];
 
-                const status = mapStatus(db.applicationStatus || db.status);
-                let metrics = undefined;
-                if (status === "running" && db.appName) {
-                   metrics = await fetchMetrics(db.appName);
+          for (const { key, label } of databaseTypes) {
+            const dbList = (container as any)[key] as any[];
+            if (!dbList || !Array.isArray(dbList)) continue;
+
+            for (const db of dbList) {
+              if (excludedList.includes(db.name.toLowerCase())) continue;
+
+              const status = mapStatus(db.applicationStatus || db.status);
+              let metrics = undefined;
+              let serviceMetrics = undefined;
+
+              if (status === "running" && db.appName) {
+                metrics = await fetchMetrics(db.appName);
+                if (metrics) {
+                  serviceMetrics = {
+                    cpu: metrics.cpu,
+                    ram: metrics.memory?.percent,
+                    ramUsed: metrics.memory?.used,
+                    ramTotal: metrics.memory?.total,
+                    networkIn: metrics.network?.input,
+                    networkOut: metrics.network?.output,
+                  };
                 }
-
-                services.push({
-                  id: db[`${dbType}Id`] || db.id,
-                  name: db.name,
-                  type: dbType,
-                  status,
-                  startTime: db.createdAt,
-                  details: {
-                    ...displayConfig,
-                    projectId: project.projectId,
-                    projectName: project.name,
-                    envName: container.name,
-                    image: db.dockerImage,
-                    port: db.externalPort,
-                    appName: db.appName,
-                     metrics
-                  },
-                });
               }
+
+              services.push({
+                id: (db as any)[`${key}Id`] || (db as any)[`${label}Id`] || db.id,
+                name: db.name,
+                type: label,
+                status,
+                startTime: db.createdAt,
+                metrics: serviceMetrics,
+                details: {
+                  ...displayConfig,
+                  projectId: project.projectId,
+                  projectName: project.name,
+                  envName: container.name,
+                  image: db.dockerImage,
+                  port: db.externalPort,
+                  appName: db.appName,
+                  metrics,
+                },
+              });
             }
           }
 
           // Parse Compose
-          if (container.compose) {
-            for (const compose of container.compose) {
+          const composeList = container.compose || container.composes || container.composeStacks;
+          if (composeList && Array.isArray(composeList)) {
+            for (const compose of composeList) {
               if (excludedList.includes(compose.name.toLowerCase())) continue;
 
               // Debug logging for compose status issues
@@ -355,8 +423,19 @@ export const dokployExtension: MonitoringExtension = {
               // Compose metrics are tricky as it might be multiple containers.
               // For now we skip or try using main appName
               let metrics = undefined;
+              let serviceMetrics = undefined;
               if (status === "running" && compose.appName) {
                    metrics = await fetchMetrics(compose.appName);
+                   if (metrics) {
+                      serviceMetrics = {
+                        cpu: metrics.cpu,
+                        ram: metrics.memory?.percent,
+                        ramUsed: metrics.memory?.used,
+                        ramTotal: metrics.memory?.total,
+                        networkIn: metrics.network?.input,
+                        networkOut: metrics.network?.output
+                      };
+                   }
               }
 
               services.push({
@@ -366,6 +445,7 @@ export const dokployExtension: MonitoringExtension = {
                 // Check multiple generic status fields + specific compose fields
                 status,
                 startTime: compose.createdAt,
+                metrics: serviceMetrics,
                 details: {
                   ...displayConfig,
                   projectId: project.projectId,
@@ -382,7 +462,13 @@ export const dokployExtension: MonitoringExtension = {
         }
       }
 
-      return services;
+      // Deduplicate by ID to avoid doubles from plural/singular variants
+      const seen = new Set();
+      return services.filter(s => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      })
     } catch (error) {
       console.error("Dokploy extension error:", error);
       // Return a single error service indicating the failure, or throw.

@@ -2,11 +2,11 @@
 
 Thank you for your interest in contributing to Overseer! This guide will help you understand how to add new monitoring extensions (plugins).
 
-## 🚀 Community Extensions
+## Community Extensions
 
 We maintained a separate repository for community extensions. If you have built a plugin that you want to share with the world, please contribute it to:
 
-👉 **[OverseerOSS/plugins](https://github.com/OverseerOSS/plugins)**
+**[OverseerOSS/plugins](https://github.com/OverseerOSS/plugins)**
 
 The guide below explains the internal architecture, but for distribution, please refer to the [Plugins Repository Guide](https://github.com/OverseerOSS/plugins/blob/main/CONTRIBUTING.md).
 

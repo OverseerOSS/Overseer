@@ -116,11 +116,22 @@ function parseRAMUsage(output: string): { total: number; used: number; details: 
     const cached = metrics['Cached'] || 0;
     const sreclaimable = metrics['SReclaimable'] || 0;
     const shmem = metrics['Shmem'] || 0;
-    const availKB = metrics['MemAvailable'] !== undefined ? metrics['MemAvailable'] : (free + buffers + cached + sreclaimable);
     
-    // used = total - free - buffers - cache
-    const cache = cached + sreclaimable;
-    const usedKB = totalKB - free - buffers - cache;
+    // Modern linux has MemAvailable, which incorporates reclaimable memory
+    let usedKB: number;
+    // Check various case possibilities just in case
+    const availKB = metrics['MemAvailable'] ?? metrics['memavailable'] ?? metrics['MemAvail'];
+    
+    if (availKB !== undefined && availKB > 0) {
+      usedKB = totalKB - availKB;
+    } else {
+      // Fallback for older kernels: used = total - free - buffers - cache
+      // We also add Shmem back in as it is technically used but often counted in "Cached"
+      const cache = cached + sreclaimable;
+      usedKB = totalKB - free - buffers - cache + shmem;
+    }
+
+    const usagePercent = totalKB > 0 ? (Math.max(0, usedKB) / totalKB) * 100 : 0;
 
     return {
       total: totalKB / 1024,
@@ -128,10 +139,10 @@ function parseRAMUsage(output: string): { total: number; used: number; details: 
       details: {
         free: free / 1024,
         buffers: buffers / 1024,
-        cached: cache / 1024,
+        cached: (cached + sreclaimable) / 1024,
         shared: shmem / 1024,
-        available: availKB / 1024,
-        usagePercent: totalKB > 0 ? (usedKB / totalKB) * 100 : 0
+        available: (availKB !== undefined ? availKB : (free + buffers + cached + sreclaimable)) / 1024,
+        usagePercent: usagePercent
       }
     };
   } catch { return null; }
@@ -180,6 +191,7 @@ export const linuxServerExtension: MonitoringExtension = {
   name: "Linux Server Monitoring",
   description: "Monitor CPU and RAM usage on remote Linux servers via SSH",
   configSchema: [
+    { key: "displayName", label: "Display Name (e.g. Cloud VM)", type: "text", defaultValue: "Server Metrics", scope: "monitor" },
     { key: "host", label: "Server IP or Hostname", type: "text", required: true, scope: "monitor" },
     { key: "port", label: "SSH Port", type: "number", defaultValue: 22, scope: "monitor" },
     { key: "enableCpu", label: "Monitor CPU", type: "checkbox", defaultValue: true, scope: "global" },
@@ -187,8 +199,8 @@ export const linuxServerExtension: MonitoringExtension = {
     { key: "enableNet", label: "Monitor Network", type: "checkbox", defaultValue: true, scope: "global" },
   ],
   fetchStatus: async (config: Record<string, any>): Promise<ServiceInfo[]> => {
-    const { host, port = 22, enableCpu, enableRam, enableNet, encryptedPrivateKey } = config as LinuxServerConfig;
-    if (!encryptedPrivateKey) return [{ id: "system", name: "Server Metrics", type: "linux-server", status: "error", details: { error: "No SSH key" } }];
+    const { host, port = 22, enableCpu, enableRam, enableNet, encryptedPrivateKey, displayName = "Server Metrics" } = config as LinuxServerConfig & { displayName?: string };
+    if (!encryptedPrivateKey) return [{ id: "system", name: displayName, type: "linux-server", status: "error", details: { error: "No SSH key" } }];
     try {
       const privateKey = decryptPrivateKey(encryptedPrivateKey);
       const metrics: Record<string, any> = {};
@@ -202,20 +214,35 @@ export const linuxServerExtension: MonitoringExtension = {
       commands.push('cat /proc/loadavg; uptime');
       types.push('system_info');
 
+      const serviceMetrics: any = {};
       if (commands.length > 0) {
         const outputs = await executeSSHCommands(host, port, privateKey, commands, 5000);
         outputs.forEach((out, i) => {
           const type = types[i];
-          if (type === 'cpu') metrics.cpuUsage = parseCPUUsage(out);
+          if (type === 'cpu') {
+            metrics.cpuUsage = parseCPUUsage(out);
+            serviceMetrics.cpu = metrics.cpuUsage;
+          }
           else if (type === 'ram') {
             const ram = parseRAMUsage(out);
             if (ram) { 
               metrics.ramTotal = ram.total; 
               metrics.ramUsed = ram.used; 
+              metrics.usagePercent = ram.details.usagePercent;
+              
+              serviceMetrics.ramTotal = ram.total;
+              serviceMetrics.ramUsed = ram.used;
+              serviceMetrics.ram = ram.details.usagePercent;
               Object.assign(metrics, ram.details);
             }
           }
-          else if (type === 'net') metrics.netRx = parseNetworkUsage(out);
+          else if (type === 'net') {
+            const net = parseNetworkUsage(out);
+            if (net !== null) {
+              metrics.netRx = net;
+              serviceMetrics.networkIn = net;
+            }
+          }
           else if (type === 'system_info') {
             const sys = parseSystemInfo(out);
             if (sys) {
@@ -225,9 +252,16 @@ export const linuxServerExtension: MonitoringExtension = {
           }
         });
       }
-      return [{ id: "system", name: "Server Metrics", type: "linux-server", status: "running", details: metrics }];
+      return [{ 
+        id: "system", 
+        name: displayName, 
+        type: "linux-server", 
+        status: "running", 
+        metrics: serviceMetrics,
+        details: metrics 
+      }];
     } catch (e: any) {
-      return [{ id: "system", name: "Server Status", type: "linux-server", status: "error", details: { error: e.message } }];
+      return [{ id: "system", name: displayName, type: "linux-server", status: "error", details: { error: e.message } }];
     }
   }
 };

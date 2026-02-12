@@ -48,7 +48,8 @@ export const MetricGraph = memo(function MetricGraph({
       
       const x = i * step;
       const clamped = Math.max(min, Math.min(max, val));
-      const pct = (clamped - min) / (max - min);
+      const range = max - min || 1; 
+      const pct = (clamped - min) / range;
       const y = viewBoxHeight - (pct * viewBoxHeight);
       
       if (first) {

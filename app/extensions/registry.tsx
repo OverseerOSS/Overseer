@@ -20,3 +20,16 @@ export function getExtensionCard(extensionId: string): ComponentType<ExtensionCa
     }
   );
 }
+
+export function getExtensionSetupComponent(extensionId: string): ComponentType<{ metadata: any }> {
+  return dynamic(
+    () =>
+      import(`./${extensionId}/setup`).catch(() => {
+        // No setup component for this extension
+        return { default: () => null };
+      }),
+    {
+      ssr: false,
+    }
+  );
+}

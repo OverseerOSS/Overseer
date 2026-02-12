@@ -2,7 +2,7 @@
 
 Welcome to the Overseer documentation! This directory contains guides and references for using and extending Overseer.
 
-## 📚 Documentation
+## Documentation
 
 - **[Plugin Development Guide](./PLUGIN_DEVELOPMENT.md)** - Complete guide for creating monitoring extensions
 - **[Credential Management](./CREDENTIALS.md)** - How to securely store API keys and secrets

@@ -8,13 +8,24 @@ export type ServiceStatus =
   | "starting"
   | "offline";
 
+export interface ServiceMetrics {
+  cpu?: number;      // Percentage 0-100
+  ram?: number;      // Percentage 0-100
+  ramUsed?: number;  // Bytes
+  ramTotal?: number; // Bytes
+  networkIn?: number;  // Bytes per second
+  networkOut?: number; // Bytes per second
+  latency?: number;    // ms
+}
+
 export interface ServiceInfo {
   id: string;
   name: string;
   type: string; // e.g., "application", "database", "container"
   status: ServiceStatus | string;
   startTime?: string; // ISO timestamp
-  details?: Record<string, any>; // CPU, Memory, external ports, etc.
+  metrics?: ServiceMetrics;
+  details?: Record<string, any>; // Extension-specific extra data
 }
 
 export interface ExtensionCardProps {
@@ -57,6 +68,10 @@ export interface ExtensionMetadata {
   name: string;
   description: string;
   configSchema: ExtensionConfigField[];
+  displayOptions?: {
+    hideStatusCards?: boolean;
+    hideHistoryUptime?: boolean;
+  };
 }
 
 export interface MonitoringExtension extends ExtensionMetadata {

@@ -130,6 +130,7 @@ export async function getAvailableExtensionsMetadata(): Promise<ExtensionMetadat
     name: e.name,
     description: e.description,
     configSchema: e.configSchema,
+    displayOptions: e.displayOptions,
   }));
 }
 
@@ -399,4 +400,193 @@ export async function getGlobalConfig(extensionId: string) {
     return JSON.parse(ext.config);
   }
   return {};
+}
+
+// --- Status Page Management ---
+
+export async function getStatusPages() {
+  return await db.statusPage.findMany({
+    include: {
+      monitors: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+}
+
+export async function createStatusPage(data: {
+  title: string;
+  slug: string;
+  description?: string;
+  showMetrics?: boolean;
+  showCpu?: boolean;
+  showRam?: boolean;
+  showNetwork?: boolean;
+  config?: any;
+  monitorIds: string[];
+}) {
+  try {
+    const statusPage = await db.statusPage.create({
+      data: {
+        title: data.title,
+        slug: data.slug,
+        description: data.description,
+        showMetrics: data.showMetrics || false,
+        showCpu: data.showCpu ?? true,
+        showRam: data.showRam ?? true,
+        showNetwork: data.showNetwork ?? true,
+        config: data.config || {},
+        monitors: {
+          connect: data.monitorIds.map((id) => ({ id })),
+        },
+      },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/status-pages");
+    return { success: true, id: statusPage.id };
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return { success: false, error: "Slug already exists" };
+    }
+    return { success: false, error: "Failed to create status page" };
+  }
+}
+
+export async function updateStatusPage(
+  id: string,
+  data: {
+    title: string;
+    slug: string;
+    description?: string;
+    showMetrics?: boolean;
+    showCpu?: boolean;
+    showRam?: boolean;
+    showNetwork?: boolean;
+    config?: any;
+    monitorIds: string[];
+  }
+) {
+  try {
+    await db.statusPage.update({
+      where: { id },
+      data: {
+        title: data.title,
+        slug: data.slug,
+        description: data.description,
+        showMetrics: data.showMetrics || false,
+        showCpu: data.showCpu ?? true,
+        showRam: data.showRam ?? true,
+        showNetwork: data.showNetwork ?? true,
+        config: data.config || {},
+        monitors: {
+          set: data.monitorIds.map((monitorId) => ({ id: monitorId })),
+        },
+      },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/status-pages");
+    revalidatePath(`/s/${data.slug}`);
+    return { success: true };
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return { success: false, error: "Slug already exists" };
+    }
+    return { success: false, error: "Failed to update status page" };
+  }
+}
+
+export async function deleteStatusPage(id: string) {
+  try {
+    await db.statusPage.delete({ where: { id } });
+    revalidatePath("/settings");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to delete status page" };
+  }
+}
+
+export async function getStatusPageBySlug(slug: string) {
+  return await db.statusPage.findUnique({
+    where: { slug },
+    include: {
+      monitors: true,
+    },
+  });
+}
+
+export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
+  const monitor = await db.serviceMonitor.findUnique({
+    where: { id: monitorId },
+    select: { createdAt: true }
+  });
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - (days - 1));
+  startDate.setHours(0, 0, 0, 0);
+
+  const metrics = await db.metric.findMany({
+    where: {
+      monitorId,
+      timestamp: {
+        gte: startDate,
+      },
+    },
+    orderBy: {
+      timestamp: 'asc',
+    },
+    select: {
+      timestamp: true,
+      data: true,
+    },
+  });
+
+  // Group metrics by day
+  const history: Record<string, string> = {}; // YYYY-MM-DD -> status
+
+  // Initialize days
+  const monitorCreatedDate = monitor?.createdAt ? monitor.createdAt.toISOString().split('T')[0] : null;
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    
+    // If the day is before the monitor was created, mark as no-data
+    if (monitorCreatedDate && key < monitorCreatedDate) {
+      history[key] = 'no-data';
+    } else {
+      history[key] = 'operational';
+    }
+  }
+
+  metrics.forEach((m) => {
+    const dateKey = m.timestamp.toISOString().split('T')[0];
+    try {
+        const data = JSON.parse(m.data);
+        
+        // Check if data is an array (ServiceInfo[]) or a single object
+        const services = Array.isArray(data) ? data : [data];
+        
+        const hasFailed = services.some((s: any) => s.status === 'failed' || s.status === 'error' || s.status === 'down');
+        const hasDegraded = services.some((s: any) => s.status === 'degraded' || s.status === 'warning');
+
+        if (hasFailed) {
+          history[dateKey] = 'outage';
+        } else if (hasDegraded && history[dateKey] !== 'outage') {
+          history[dateKey] = 'degraded';
+        }
+    } catch (e) {
+        // Ignore parse errors
+    }
+  });
+
+  // Convert to ordered array (oldest to newest)
+  const result = Object.entries(history)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, status]) => ({ date, status }));
+
+  return result;
 }

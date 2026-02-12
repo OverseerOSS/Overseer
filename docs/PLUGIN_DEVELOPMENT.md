@@ -636,4 +636,4 @@ export const databaseMonitor: MonitoringExtension = {
 
 ---
 
-**Happy Plugin Development! 🚀**
+**Happy Plugin Development!**

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { BarChart3, Bell, Globe, Layout, LogOut, MoreVertical, Plus, Settings, ShoppingBag, Trash2 } from "lucide-react";
+import { BarChart3, Globe, Layout, LogOut, MoreVertical, Plus, Settings, ShoppingBag, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface SidebarProps {
@@ -16,6 +16,8 @@ interface SidebarProps {
 export function Sidebar({ monitors, orgName = "Overseer", selectedMonitorId, onLogout, onDeleteMonitor }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -58,13 +60,9 @@ export function Sidebar({ monitors, orgName = "Overseer", selectedMonitorId, onL
               <Layout className="w-4 h-4" />
               Overview
             </Link>
-            <Link href="/" className={`px-3 py-3 border-2 border-transparent flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all ${pathname === "/monitors" ? "bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "hover:border-black text-black"}`}>
-              <BarChart3 className="w-4 h-4" />
-              Monitors
-            </Link>
-            <Link href="#" className="px-3 py-3 border-2 border-transparent flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all hover:border-black text-black">
-              <Bell className="w-4 h-4" />
-              Notifications
+            <Link href="/status-pages" className={`px-3 py-3 border-2 border-transparent flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all ${pathname === "/status-pages" ? "bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "hover:border-black text-black"}`}>
+              <Globe className="w-4 h-4" />
+              Status Pages
             </Link>
             <Link href="/settings" className={`px-3 py-3 border-2 border-transparent flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all ${pathname === "/settings" ? "bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "hover:border-black text-black"}`}>
               <Settings className="w-4 h-4" />
