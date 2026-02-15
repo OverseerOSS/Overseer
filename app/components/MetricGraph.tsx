@@ -95,14 +95,14 @@ export const MetricGraph = memo(function MetricGraph({
   }, [latestValue, unit]);
 
   return (
-    <div className="flex flex-col w-full bg-white border-2 border-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 transition-colors">
+    <div className="flex flex-col w-full bg-white dark:bg-black border-2 border-black dark:border-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
       <div className="flex items-center justify-between mb-4">
-         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-black/40">{label}</span>
+         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-black/40 dark:text-white/40">{label}</span>
          <div className="text-right">
-            <span className="text-xl font-bold text-black tracking-tighter">
+            <span className="text-xl font-bold text-black dark:text-white tracking-tighter">
               {formattedValue}
             </span>
-            <span className="text-[10px] font-black uppercase tracking-widest text-black/40 ml-1">
+            <span className="text-[10px] font-black uppercase tracking-widest text-black/40 dark:text-white/40 ml-1">
               {displayUnit}
             </span>
          </div>

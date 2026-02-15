@@ -1,7 +1,0 @@
-{
-  "id": "dokploy",
-  "name": "Dokploy Monitoring",
-  "version": "1.0.0",
-  "description": "Monitor applications and databases managed by Dokploy",
-  "entry": "index.ts"
-}

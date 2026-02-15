@@ -5,7 +5,7 @@ A powerful, extensible infrastructure monitoring platform built with Next.js. Mo
 ## Features
 
 - Real-time Monitoring - Track server metrics, API health, and service status
-- Plugin System - Create custom monitoring extensions for any infrastructure
+
 - Secure Credentials - Built-in encryption for API keys and passwords
 - Historical Data - View metrics over time with interactive graphs
 - Easy Setup - Get started in minutes with simple configuration
@@ -50,14 +50,14 @@ Detailed configuration options:
 
 ## Built-in Monitors
 
-Overseer comes with these monitoring extensions:
+
 
 - Linux Server - Monitor CPU, RAM, and system metrics via SSH
 - Dokploy - Monitor Dokploy-managed containers and applications
 
 ## Documentation
 
-- [Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md) - Create your own monitoring extensions
+
 - [Credential Management](./docs/CREDENTIALS.md) - Securely store API keys and secrets
 - [Full Documentation](./docs/) - Complete guides and references
 

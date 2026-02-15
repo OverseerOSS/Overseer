@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { getTheme } from "./actions";
+import { ThemeSync } from "./components/ThemeSync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,16 +19,20 @@ export const metadata: Metadata = {
   description: "Monitor and manage your infrastructure components with Overseer",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const theme = await getTheme();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={theme}>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white dark:bg-[#0a0a0a] transition-colors duration-300`}
+        suppressHydrationWarning
       >
+        <ThemeSync theme={theme} />
         {children}
       </body>
     </html>

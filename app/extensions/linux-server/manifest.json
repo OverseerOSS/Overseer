@@ -1,7 +1,0 @@
-{
-  "id": "linux-server",
-  "name": "Linux Server Monitoring",
-  "version": "1.0.0",
-  "description": "Monitor CPU and RAM usage on remote Linux servers via SSH",
-  "entry": "index.ts"
-}

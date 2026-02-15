@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   addServiceMonitor,
@@ -8,31 +8,27 @@ import {
   getDashboardData,
   getServiceMonitors,
   logout,
-  getGlobalConfig,
-  fetchMonitorStatus,
   getMonitorHistory,
-  checkDatabaseReady
+  checkDatabaseReady,
+  getMonitorUptimeStats,
+  updateServiceMonitor,
+  probeMonitor,
+  updateMonitorNotificationChannels
 } from "./actions";
-import { ExtensionMetadata } from "./extensions/types";
-import { getExtensionCard, getExtensionSetupComponent } from "./extensions/registry";
+import { ServiceInfo, MonitorMetadata } from "@/lib/monitoring/types";
+import { GenericMonitorCard } from "./components/GenericMonitorCard";
 import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
-import { ChevronRight, Plus, X } from "lucide-react";
+import { Plus, X, Zap, Bell } from "lucide-react";
 import Link from "next/link";
 
 interface Monitor {
   id: string;
   name: string;
-  extensionId: string;
-  config: string;
-}
-
-interface ServiceInfo {
-  id: string;
-  name: string;
   type: string;
-  status: "running" | "degraded" | "failed" | string;
-  [key: string]: any;
+  config: string;
+  url?: string | null;
+  method?: string | null;
 }
 
 export default function Dashboard() {
@@ -49,20 +45,56 @@ function DashboardContent() {
 
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [orgName, setOrgName] = useState("Overseer");
-  const [installedExtensions, setInstalledExtensions] = useState<string[]>([]);
-  const [allExtensions, setAllExtensions] = useState<ExtensionMetadata[]>([]);
+  const [monitorTypes, setMonitorTypes] = useState<MonitorMetadata[]>([]);
+  const [notificationChannels, setNotificationChannels] = useState<any[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
   const [monitorData, setMonitorData] = useState<ServiceInfo[] | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
+  const [uptimeStats, setUptimeStats] = useState<{ uptime24h: number; uptime30d: number } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [creationMetadata, setCreationMetadata] = useState<any>(null);
-  const [selectedExtId, setSelectedExtId] = useState("");
+  const [selectedTypeId, setSelectedTypeId] = useState("");
   const [newMonitorName, setNewMonitorName] = useState("");
   const [newMonitorConfig, setNewMonitorConfig] = useState<Record<string, any>>({});
-  const [globalConfig, setGlobalConfig] = useState<Record<string, any>>({});
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProbing, setIsProbing] = useState(false);
   const [error, setError] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [editingMonitorId, setEditingMonitorId] = useState<string | null>(null);
+
+  const handleProbe = async () => {
+    const url = newMonitorConfig.url;
+    if (!url) {
+      setError("Enter a URL first to auto-probe");
+      return;
+    }
+
+    setIsProbing(true);
+    setError("");
+    
+    try {
+      const result = await probeMonitor(url);
+      if (result.success && result.suggestions) {
+        setNewMonitorConfig(prev => ({
+          ...prev,
+          ...result.suggestions
+        }));
+        // If name is empty, suggest one from the URL
+        if (!newMonitorName) {
+            try {
+                const hostname = new URL(result.suggestions.url).hostname;
+                setNewMonitorName(hostname.toUpperCase());
+            } catch {}
+        }
+      } else {
+        setError(result.error || "Probe failed. Check the URL and try again.");
+      }
+    } catch (err: any) {
+      setError("An error occurred during probing.");
+    } finally {
+      setIsProbing(false);
+    }
+  };
 
   // Sync selected monitor from URL
   useEffect(() => {
@@ -75,57 +107,48 @@ function DashboardContent() {
 
   // Load initial data
   useEffect(() => {
-    // 1. Check DB Health
     checkDatabaseReady().then(status => {
       if (!status.ready && status.error === 'setup_required') {
-         logout(); // Redirect to login -> setup
+         logout();
          return;
       }
-      
-      // 2. Load Data if ready
       loadDashboard();
     });
-  }, []); // Only run once on mount
+  }, []);
 
   const loadDashboard = async () => {
     try {
         const data = await getDashboardData();
-        
         if (data.monitors) {
-          setMonitors(data.monitors);
+          setMonitors(data.monitors as any);
           if (data.monitors.length > 0 && !selectedMonitorId) {
             setSelectedMonitorId(data.monitors[0].id);
           }
         }
-        
-        setInstalledExtensions(data.installedExtensions);
-        setAllExtensions(data.allExtensions);
+        setMonitorTypes(data.monitorTypes);
         setOrgName(data.orgName);
+        setNotificationChannels(data.notificationChannels);
     } catch (err) { 
       console.error(err); 
     }
   };
-
-  /*
-  useEffect(() => {
-    // Moved to manual call
-  }, [selectedMonitorId]);
-  */
-
-
 
   // Stream monitor data and live history
   useEffect(() => {
     if (!selectedMonitorId) {
       setMonitorData(null);
       setHistoryData([]);
+      setUptimeStats(null);
       return;
     }
 
     let isSubscribed = true;
 
-    // 1. Initial history fetch to populate graphs
-    getMonitorHistory(selectedMonitorId, 50).then(history => {
+    getMonitorUptimeStats(selectedMonitorId).then(stats => {
+      if (isSubscribed) setUptimeStats(stats);
+    });
+
+    getMonitorHistory(selectedMonitorId, 100).then(history => {
       if (isSubscribed) {
         setHistoryData(history);
         if (history.length > 0 && !monitorData) {
@@ -134,7 +157,6 @@ function DashboardContent() {
       }
     });
 
-    // 2. Setup SSE for live updates
     const eventSource = new EventSource(`/api/monitors/${selectedMonitorId}/stream`);
 
     const handleUpdate = (event: MessageEvent) => {
@@ -143,25 +165,20 @@ function DashboardContent() {
         if (payload.data && isSubscribed) {
           const newData = payload.data;
           setMonitorData(newData);
-          
-          // Add to rolling history
           setHistoryData(prev => {
             const newHistoryPoint = {
               timestamp: new Date().toISOString(),
               data: newData
             };
             const updated = [...prev, newHistoryPoint];
-            return updated.slice(-100); // Keep last 100 points
+            return updated.slice(-100);
           });
         }
-      } catch (err) {
-        // Silently handle
-      }
+      } catch (err) {}
     };
 
     eventSource.addEventListener('update', handleUpdate as any);
-
-    eventSource.onerror = (err) => {
+    eventSource.onerror = () => {
       console.warn("SSE connection interrupted, reconnecting...");
     };
 
@@ -170,73 +187,52 @@ function DashboardContent() {
       eventSource.removeEventListener('update', handleUpdate as any);
       eventSource.close();
     };
-  }, [selectedMonitorId]); // Combined history and live data dependency
-
-  // Load global config when extension changes
-  useEffect(() => {
-    if (selectedExtId) {
-      const loadConfig = async () => {
-        const config = await getGlobalConfig(selectedExtId);
-        setGlobalConfig(config);
-      };
-      loadConfig();
-    }
-  }, [selectedExtId]);
+  }, [selectedMonitorId]);
 
   const handleAddMonitor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedExtId || !newMonitorName) return;
+    if (!selectedTypeId || !newMonitorName) return;
 
     setIsSubmitting(true);
     setError("");
 
-    const ext = allExtensions.find(e => e.id === selectedExtId);
+    const monitorType = monitorTypes.find(t => t.id === selectedTypeId);
     const finalConfig = { ...newMonitorConfig };
 
-    if (ext) {
-      ext.configSchema.forEach(field => {
+    if (monitorType) {
+      monitorType.configSchema.forEach(field => {
         const userValue = finalConfig[field.key];
-        const hasGlobal = !!globalConfig[field.key];
-
-        if (userValue === undefined || userValue === "") {
-          if (hasGlobal) {
-            delete finalConfig[field.key];
-          } else if (field.defaultValue !== undefined) {
-            finalConfig[field.key] = field.defaultValue;
-          }
+        if ((userValue === undefined || userValue === "") && field.defaultValue !== undefined) {
+          finalConfig[field.key] = field.defaultValue;
         }
       });
     }
 
-    const result = await addServiceMonitor(
-      selectedExtId,
-      newMonitorName,
-      finalConfig
-    );
+    let result;
+    if (editingMonitorId) {
+      result = await updateServiceMonitor(editingMonitorId, newMonitorName, finalConfig);
+    } else {
+      result = await addServiceMonitor(selectedTypeId, newMonitorName, finalConfig);
+    }
+    
+    if (result.success && result.monitor) {
+      await updateMonitorNotificationChannels(result.monitor.id, selectedChannelIds);
+    }
 
     setIsSubmitting(false);
 
     if (result.success) {
-      if (result.metadata) {
-        setCreationMetadata({
-          ...result.metadata,
-          monitorName: newMonitorName,
-          extensionId: selectedExtId
-        });
-      } else {
-        setIsAddModalOpen(false);
-      }
-      
+      setIsAddModalOpen(false);
+      setEditingMonitorId(null);
       setNewMonitorName("");
       setNewMonitorConfig({});
-      setSelectedExtId("");
+      setSelectedTypeId("");
+      setSelectedChannelIds([]);
       setError("");
-      
-      // Reload monitors
       const monitorsList = await getServiceMonitors();
-      setMonitors(monitorsList);
+      setMonitors(monitorsList as any);
     } else {
-      setError(result.error || "Failed to add monitor");
+      setError(result.error || "Failed to save monitor");
     }
   };
 
@@ -245,7 +241,7 @@ function DashboardContent() {
     if (result.success) {
       setDeleteTargetId(null);
       const monitorsList = await getServiceMonitors();
-      setMonitors(monitorsList);
+      setMonitors(monitorsList as any);
       if (selectedMonitorId === id) {
         setSelectedMonitorId(monitorsList[0]?.id || null);
       }
@@ -257,68 +253,53 @@ function DashboardContent() {
     [monitors, selectedMonitorId]
   );
 
-  const availableExtensions = useMemo(
-    () => allExtensions.filter(e => installedExtensions.includes(e.id)),
-    [allExtensions, installedExtensions]
+  const selectedTypeDefinition = useMemo(
+    () => monitorTypes.find(t => t.id === selectedTypeId),
+    [monitorTypes, selectedTypeId]
   );
-
-  const selectedExtensionDef = useMemo(
-    () => allExtensions.find(e => e.id === selectedExtId),
-    [allExtensions, selectedExtId]
-  );
-
-  const ExtensionCard = useMemo(
-    () => selectedMonitor ? getExtensionCard(selectedMonitor.extensionId) : null,
-    [selectedMonitor]
-  );
-
-  const SetupComponent = useMemo(
-    () => creationMetadata ? getExtensionSetupComponent(creationMetadata.extensionId) : null,
-    [creationMetadata]
-  );
-
-  const selectedExtensionMetadata = useMemo(() => {
-    if (!selectedMonitor) return null;
-    return allExtensions.find(e => e.id === selectedMonitor.extensionId);
-  }, [selectedMonitor, allExtensions]);
-
-  // Calculate metrics from monitor data
-  const metrics = useMemo(() => {
-    if (!monitorData || monitorData.length === 0) {
-      return {};
-    }
-
-    return {};
-  }, [monitorData]);
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-white dark:bg-[#0a0a0a] transition-colors duration-300">
       <Sidebar
         monitors={monitors}
         orgName={orgName}
         selectedMonitorId={selectedMonitorId || undefined}
         onLogout={logout}
         onDeleteMonitor={(id) => setDeleteTargetId(id)}
+        onEditMonitor={(id) => {
+          const m = monitors.find(x => x.id === id);
+          if (m) {
+            setEditingMonitorId(id);
+            setNewMonitorName(m.name);
+            setSelectedTypeId(m.type);
+            setNewMonitorConfig(JSON.parse(m.config));
+            
+            // Find which channels this monitor belongs to
+            const linkedChannels = notificationChannels
+              .filter(c => c.monitors.some((mon: any) => mon.id === id))
+              .map(c => c.id);
+            setSelectedChannelIds(linkedChannels);
+            
+            setIsAddModalOpen(true);
+          }
+        }}
       />
 
-      {/* Main Content */}
-      <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white">
-        {/* Header */}
-        <header className="border-b-2 border-black bg-white sticky top-0 z-10">
+      <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white dark:bg-[#0a0a0a]">
+        <header className="border-b-2 border-black dark:border-white bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="px-10 py-6 flex items-center justify-between">
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-black">
+            <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-black dark:text-white">
               <Link href="/" className="hover:line-through transition-all">Dashboard</Link>
-              <div className="w-2 h-2 bg-black rotate-45" />
+              <div className="w-2 h-2 bg-black dark:bg-white rotate-45" />
               <Link href={`/?monitor=${selectedMonitorId}`} className="font-bold truncate max-w-[200px]">
                 {selectedMonitor?.name || "Monitor"}
               </Link>
-              <div className="w-1.5 h-1.5 bg-black/20" />
+              <div className="w-1.5 h-1.5 bg-black/20 dark:bg-white/20" />
               <span className="opacity-40 font-bold">Analytics</span>
             </div>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white font-black uppercase tracking-widest text-xs hover:bg-white hover:text-black border-2 border-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+              className="inline-flex items-center gap-3 px-8 py-4 bg-black dark:bg-white text-white dark:text-black font-black uppercase tracking-widest text-xs hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white border-2 border-black dark:border-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]"
             >
               <Plus className="w-5 h-5 stroke-[3]" />
               Add Monitor
@@ -326,18 +307,16 @@ function DashboardContent() {
           </div>
         </header>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto bg-white">
+        <div className="flex-1 overflow-auto bg-white dark:bg-[#0a0a0a]">
           <div className="p-10 max-w-7xl mx-auto">
-            {/* Title */}
-            <div className="mb-12 border-l-4 border-black pl-8 py-2">
-              <h1 className="text-6xl font-bold text-black uppercase tracking-tighter mb-2 leading-none">
+            <div className="mb-12 border-l-4 border-black dark:border-white pl-8 py-2">
+              <h1 className="text-6xl font-bold text-black dark:text-white uppercase tracking-tighter mb-2 leading-none">
                 {selectedMonitor?.name || "Overseer Dashboard"}
               </h1>
               {selectedMonitor && (
                 <div className="flex items-center gap-4">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-black/40">
-                    Extension: <span className="text-black/80">{selectedMonitor.extensionId}</span>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-black/40 dark:text-white/40">
+                    Type: <span className="text-black/80">{selectedMonitor.type}</span>
                   </p>
                   <div className="w-1.5 h-1.5 bg-black/20" />
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-black/40">
@@ -348,11 +327,11 @@ function DashboardContent() {
             </div>
 
             {monitors.length === 0 ? (
-              <div className="bg-white border-2 border-black p-20 text-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <p className="text-2xl font-bold uppercase tracking-tighter mb-10 text-black">No monitors configured yet.</p>
+              <div className="bg-white dark:bg-black border-2 border-black dark:border-white p-20 text-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] transition-colors">
+                <p className="text-2xl font-bold uppercase tracking-tighter mb-10 text-black dark:text-white">No monitors configured yet.</p>
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="inline-flex items-center gap-4 px-10 py-5 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-lg hover:bg-white hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                  className="inline-flex items-center gap-4 px-10 py-5 border-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-lg hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]"
                 >
                   <Plus className="w-6 h-6" />
                   Add Your First Monitor
@@ -360,23 +339,15 @@ function DashboardContent() {
               </div>
             ) : (
               <>
-                {/* Status Cards & Charts */}
-                {!selectedExtensionMetadata?.displayOptions?.hideStatusCards && (
-                  <>
-                    <StatusCards
-                      lastChecked="Just now"
-                    />
-                  </>
-                )}
+                <StatusCards lastChecked="Just now" />
 
-                {/* Resources List */}
                 {selectedMonitor && (
                    <div className="mt-20">
-                     <div className="flex items-center justify-between mb-10 border-b-2 border-black pb-4">
-                        <h2 className="text-4xl font-bold text-black uppercase tracking-tighter flex items-center gap-4">
+                     <div className="flex items-center justify-between mb-10 border-b-2 border-black dark:border-white pb-4 transition-colors">
+                        <h2 className="text-4xl font-bold text-black dark:text-white uppercase tracking-tighter flex items-center gap-4">
                            Resources
                            {monitorData && (
-                             <span className="bg-black text-white text-xs px-3 py-1 font-bold">
+                             <span className="bg-black dark:bg-white text-white dark:text-black text-xs px-3 py-1 font-bold">
                                {monitorData.length}
                              </span>
                            )}
@@ -386,12 +357,12 @@ function DashboardContent() {
                      {!monitorData ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                            {[1, 2, 3].map(i => (
-                             <div key={i} className="h-48 bg-white border-2 border-black animate-pulse shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]" />
+                             <div key={i} className="h-48 bg-white dark:bg-black border-2 border-black dark:border-white animate-pulse shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.1)]" />
                            ))}
                         </div>
                      ) : monitorData.length === 0 ? (
-                        <div className="bg-white border-2 border-black p-16 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                           <p className="text-black font-bold uppercase tracking-widest opacity-50">No resources discovered for this monitor.</p>
+                        <div className="bg-white dark:bg-black border-2 border-black dark:border-white p-16 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] transition-colors">
+                           <p className="text-black dark:text-white font-bold uppercase tracking-widest opacity-50">No resources discovered for this monitor.</p>
                         </div>
                      ) : (
                         <div className={`grid gap-8 ${
@@ -400,32 +371,31 @@ function DashboardContent() {
                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                         }`}>
                            {monitorData.map(service => (
-                             <div key={service.id} className="bg-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex flex-col hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                <div className="px-5 py-4 border-b-2 border-black flex items-center justify-between bg-white">
+                             <div key={service.id} className="bg-white dark:bg-black border-2 border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] flex flex-col hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] transition-all">
+                                <div className="px-5 py-4 border-b-2 border-black dark:border-white flex items-center justify-between bg-white dark:bg-black">
                                    <div className="flex items-center gap-3">
-                                      <div className={`w-3 h-3 border-2 border-black ${
+                                      <div className={`w-3 h-3 border-2 border-black dark:border-white ${
                                          service.status === 'running' ? 'bg-green-500' :
                                          service.status === 'degraded' ? 'bg-yellow-500' :
                                          'bg-red-500'
                                       }`} />
-                                      <span className="font-bold text-black uppercase tracking-tighter text-lg truncate max-w-[180px]" title={service.name}>
+                                      <span className="font-bold text-black dark:text-white uppercase tracking-tighter text-lg truncate max-w-[180px]" title={service.name}>
                                         {service.name}
                                       </span>
                                    </div>
-                                   <span className="text-[10px] font-bold uppercase tracking-widest text-black opacity-50">
+                                   <span className="text-[10px] font-bold uppercase tracking-widest text-black dark:text-white opacity-50">
                                       {service.type}
                                    </span>
                                 </div>
                                 <div className="p-6 flex-1">
-                                   {ExtensionCard && (
-                                     <ExtensionCard 
-                                       service={service as any} 
-                                       history={historyData.map(h => ({
-                                          timestamp: h.timestamp,
-                                          data: h.data.find((s: any) => s.id === service.id)
-                                       })).filter(h => h.data)} 
-                                     />
-                                   )}
+                                   <GenericMonitorCard 
+                                     service={service} 
+                                     history={historyData.map(h => ({
+                                        timestamp: h.timestamp,
+                                        data: Array.isArray(h.data) ? h.data.find((s: any) => s.id === service.id) : null
+                                     })).filter(h => h.data)} 
+                                     uptimeStats={uptimeStats}
+                                   />
                                 </div>
                              </div>
                            ))}
@@ -439,195 +409,154 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* Add Monitor Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-white border-2 border-black max-w-xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <div className="px-8 py-8 border-b-2 border-black flex items-center justify-between bg-black text-white">
+        <div className="fixed inset-0 bg-black/60 dark:bg-white/10 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white max-w-xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+            <div className="px-8 py-8 border-b-2 border-black dark:border-white flex items-center justify-between bg-black dark:bg-white text-white dark:text-black">
               <div>
-                <h3 className="text-3xl font-bold uppercase tracking-tighter">
-                  {creationMetadata ? "Monitor Created" : "Add Monitor"}
-                </h3>
-                <p className="text-[10px] uppercase font-bold tracking-widest opacity-60 mt-2">
-                  {creationMetadata ? "Action required to complete setup" : "Deploy new monitoring endpoint"}
-                </p>
+                <h3 className="text-3xl font-bold uppercase tracking-tighter">{editingMonitorId ? 'Edit Monitor' : 'Add Monitor'}</h3>
+                <p className="text-[10px] uppercase font-bold tracking-widest opacity-60 mt-2">{editingMonitorId ? 'Update monitor configuration' : 'Deploy new monitoring endpoint'}</p>
               </div>
-              <button
-                onClick={() => { setIsAddModalOpen(false); setCreationMetadata(null); }}
-                className="p-2 border-2 border-white hover:bg-white hover:text-black transition-all"
-              >
+              <button onClick={() => { setIsAddModalOpen(false); setEditingMonitorId(null); }} className="p-2 border-2 border-white dark:border-black hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            {creationMetadata ? (
-              <div className="p-8 space-y-8">
-                {SetupComponent && (
-                  <div className="space-y-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-black/60">
-                      Some extensions may require additional setup.
-                    </p>
-                    <SetupComponent metadata={creationMetadata} />
-                  </div>
-                )}
+            <form onSubmit={handleAddMonitor} className="p-8 space-y-8">
+              <div>
+                <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black dark:text-white">Monitor Name</label>
+                <input
+                  type="text"
+                  value={newMonitorName}
+                  onChange={e => setNewMonitorName(e.target.value)}
+                  className="w-full px-5 py-4 bg-white dark:bg-black border-2 border-black dark:border-white font-bold uppercase tracking-widest text-sm focus:outline-none focus:bg-black dark:focus:bg-white focus:text-white dark:focus:text-black transition-colors text-black dark:text-white"
+                  placeholder="E.G. PRODUCTION API"
+                  required
+                />
+              </div>
 
-                <div className="bg-amber-50 border-2 border-black p-4 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                  Make sure you have <span className="underline">root</span> or a user with correct permissions. The connection will be tested on the next refresh.
-                </div>
-
-                <button
-                  onClick={() => { setIsAddModalOpen(false); setCreationMetadata(null); }}
-                  className="w-full py-4 bg-black text-white border-2 border-black font-bold uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-white hover:text-black transition-all active:translate-x-1 active:translate-y-1 active:shadow-none"
+              <div>
+                <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black dark:text-white">Monitor Type</label>
+                <select
+                  value={selectedTypeId}
+                  onChange={e => setSelectedTypeId(e.target.value)}
+                  className="w-full px-5 py-4 border-2 border-black dark:border-white font-bold uppercase tracking-widest text-sm focus:outline-none bg-white dark:bg-black text-black dark:text-white"
+                  required
                 >
-                  GOT IT, CLOSE
+                  <option value="">SELECT A TYPE...</option>
+                  {monitorTypes.map(type => (
+                    <option key={type.id} value={type.id}>{type.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTypeDefinition && (
+                <div className="space-y-6 pt-6 border-t-2 border-black dark:border-white">
+                  <h4 className="text-sm font-bold uppercase tracking-widest bg-black dark:bg-white text-white dark:text-black px-3 py-1 inline-block">Configuration</h4>
+                  {selectedTypeDefinition.configSchema.map(field => (
+                    <div key={field.key}>
+                      {field.type === "checkbox" ? (
+                        <label className="flex items-center gap-4 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={newMonitorConfig[field.key] || false}
+                            onChange={e => setNewMonitorConfig(prev => ({ ...prev, [field.key]: e.target.checked }))}
+                            className="sr-only"
+                          />
+                          <div className={`w-6 h-6 border-2 border-black dark:border-white transition-all ${newMonitorConfig[field.key] ? 'bg-black dark:bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]' : 'bg-white dark:bg-black'}`}>
+                            {newMonitorConfig[field.key] && <div className="flex items-center justify-center h-full"><div className="w-2.5 h-2.5 bg-white dark:bg-black" /></div>}
+                          </div>
+                          <span className="text-xs font-bold uppercase tracking-widest text-black dark:text-white">{field.label}</span>
+                        </label>
+                      ) : (
+                        <>
+                          <label className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold uppercase tracking-widest text-black dark:text-white">{field.label}{field.required && <span className="text-red-500 ml-1 font-bold">*</span>}</span>
+                            {field.key === "url" && (
+                              <button
+                                type="button"
+                                onClick={handleProbe}
+                                disabled={isProbing}
+                                className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 px-2 py-1 bg-black dark:bg-white text-white dark:text-black hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white border border-black dark:border-white transition-all disabled:opacity-50"
+                              >
+                                {isProbing ? (
+                                  <div className="w-3 h-3 border-2 border-white/30 dark:border-black/30 border-t-white dark:border-t-black animate-spin rounded-full" />
+                                ) : (
+                                  <Zap className="w-3 h-3" />
+                                )}
+                                {isProbing ? "Probing..." : "Auto-Config"}
+                              </button>
+                            )}
+                          </label>
+                          <input
+                            type={field.type === "password" ? "password" : "text"}
+                            value={newMonitorConfig[field.key] || ""}
+                            onChange={e => setNewMonitorConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
+                            className="w-full px-4 py-3 border-2 border-black dark:border-white bg-white dark:bg-black font-bold uppercase tracking-widest text-xs focus:bg-black dark:focus:bg-white focus:text-white dark:focus:text-black transition-colors text-black dark:text-white"
+                            placeholder={String(field.defaultValue || "").toUpperCase()}
+                            required={field.required}
+                          />
+                          {field.description && <p className="text-[10px] text-black dark:text-white font-bold uppercase tracking-widest mt-2 opacity-50">{field.description}</p>}
+                        </>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Notification Channels Selection */}
+                  <div className="pt-6 border-t-2 border-dashed border-black/20 dark:border-white/20">
+                    <label className="block text-xs font-bold mb-4 uppercase tracking-widest text-black dark:text-white flex items-center gap-2">
+                       <Bell className="w-4 h-4" /> Notifications
+                    </label>
+                    {notificationChannels.length === 0 ? (
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">No channels configured. Add them in Settings.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2">
+                        {notificationChannels.map(channel => (
+                          <label key={channel.id} className="flex items-center gap-3 p-3 border-2 border-black dark:border-white hover:bg-black group hover:text-white cursor-pointer transition-all">
+                            <input
+                              type="checkbox"
+                              checked={selectedChannelIds.includes(channel.id)}
+                              onChange={e => {
+                                if (e.target.checked) setSelectedChannelIds(prev => [...prev, channel.id]);
+                                else setSelectedChannelIds(prev => prev.filter(id => id !== channel.id));
+                              }}
+                              className="sr-only"
+                            />
+                            <div className={`w-5 h-5 border-2 border-black dark:border-white group-hover:border-white bg-white dark:bg-black transition-all flex items-center justify-center`}>
+                               {selectedChannelIds.includes(channel.id) && <div className="w-2.5 h-2.5 bg-black dark:bg-white" />}
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-widest">{channel.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {error && <div className="p-4 bg-red-500 border-2 border-black dark:border-white text-white font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]">{error}</div>}
+
+              <div className="flex gap-4 pt-8 border-t-2 border-black dark:border-white">
+                <button type="button" onClick={() => { setIsAddModalOpen(false); setEditingMonitorId(null); }} className="flex-1 px-4 py-4 border-2 border-black dark:border-white font-bold uppercase tracking-widest text-sm hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] text-black dark:text-white">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 border-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all disabled:opacity-50">
+                  {isSubmitting ? "SAVING..." : (editingMonitorId ? "UPDATE MONITOR" : "CREATE MONITOR")}
                 </button>
               </div>
-            ) : (
-              <form onSubmit={handleAddMonitor} className="p-8 space-y-8">
-                {/* Monitor Name */}
-                <div>
-                  <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black">Monitor Name</label>
-                  <input
-                    type="text"
-                    value={newMonitorName}
-                    onChange={e => setNewMonitorName(e.target.value)}
-                    className="w-full px-5 py-4 bg-white border-2 border-black font-bold uppercase tracking-widest text-sm focus:outline-none focus:bg-black focus:text-white transition-colors"
-                    placeholder="E.G. PRODUCTION API"
-                    required
-                  />
-                </div>
-
-                {/* Extension Type */}
-                <div>
-                  <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black">Extension</label>
-                  <select
-                    value={selectedExtId}
-                    onChange={e => setSelectedExtId(e.target.value)}
-                    className="w-full px-5 py-4 border-2 border-black font-bold uppercase tracking-widest text-sm focus:outline-none bg-white font-bold"
-                    required
-                  >
-                    <option value="">SELECT AN EXTENSION...</option>
-                    {allExtensions.map(ext => (
-                      <option key={ext.id} value={ext.id}>
-                        {ext.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Configuration Fields */}
-                {selectedExtensionDef && (
-                  <div className="space-y-6 pt-8 border-t-2 border-black">
-                    <h4 className="text-sm font-bold uppercase tracking-widest bg-black text-white px-3 py-1 inline-block">Configuration</h4>
-                    {selectedExtensionDef.configSchema
-                      .filter(f => f.scope !== "global")
-                      .map(field => (
-                        <div key={field.key}>
-                          {field.type === "checkbox" ? (
-                            <label className="flex items-center gap-4 cursor-pointer group">
-                              <div className="relative">
-                                <input
-                                  type="checkbox"
-                                  checked={newMonitorConfig[field.key] || false}
-                                  onChange={e =>
-                                    setNewMonitorConfig(prev => ({
-                                      ...prev,
-                                      [field.key]: e.target.checked,
-                                    }))
-                                  }
-                                  className="sr-only"
-                                />
-                                <div className={`w-6 h-6 border-2 border-black transition-all ${newMonitorConfig[field.key] ? 'bg-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}>
-                                  {newMonitorConfig[field.key] && (
-                                    <div className="flex items-center justify-center h-full">
-                                      <div className="w-2.5 h-2.5 bg-white" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <span className="text-xs font-bold uppercase tracking-widest">{field.label}</span>
-                            </label>
-                          ) : (
-                            <>
-                              <label className="block text-xs font-bold mb-2 uppercase tracking-widest text-black">
-                                {field.label}
-                                {field.required && <span className="text-red-500 ml-1 font-bold">*</span>}
-                              </label>
-                              <input
-                                type={field.type === "password" ? "password" : "text"}
-                                value={newMonitorConfig[field.key] || ""}
-                                onChange={e =>
-                                  setNewMonitorConfig(prev => ({
-                                    ...prev,
-                                    [field.key]: e.target.value,
-                                  }))
-                                }
-                                className="w-full px-4 py-3 border-2 border-black bg-white font-bold uppercase tracking-widest text-xs focus:bg-black focus:text-white transition-colors"
-                                placeholder={String(field.defaultValue || "").toUpperCase()}
-                                required={field.required}
-                              />
-                              {field.description && (
-                                <p className="text-[10px] text-black font-bold uppercase tracking-widest mt-2 opacity-50">{field.description}</p>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                )}
-
-                {error && (
-                  <div className="p-4 bg-red-500 border-2 border-black text-white text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                    {error}
-                  </div>
-                )}
-
-                {/* Buttons */}
-                <div className="flex gap-4 pt-8 border-t-2 border-black">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="flex-1 px-4 py-4 border-2 border-black font-bold uppercase tracking-widest text-sm hover:bg-black hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 px-4 py-4 border-2 border-black bg-black text-white font-bold uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-white hover:text-black transition-all disabled:opacity-50 disabled:grayscale active:translate-x-1 active:translate-y-1 active:shadow-none"
-                  >
-                    {isSubmitting ? "CREATING..." : "CREATE MONITOR"}
-                  </button>
-                </div>
-              </form>
-            )}
+            </form>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteTargetId && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-white border-2 border-black max-w-sm w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <div className="px-8 py-8 border-b-2 border-black bg-black text-white">
+        <div className="fixed inset-0 bg-black/60 dark:bg-white/10 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white max-w-sm w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+            <div className="px-8 py-8 border-b-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black">
               <h3 className="text-2xl font-bold uppercase tracking-tighter">Delete Monitor?</h3>
             </div>
-            <div className="px-8 py-8">
-              <p className="text-black font-bold uppercase tracking-widest text-xs opacity-60">This action cannot be undone. All history will be lost.</p>
-            </div>
-            <div className="px-8 py-6 border-t-2 border-black flex gap-4">
-              <button
-                onClick={() => setDeleteTargetId(null)}
-                className="flex-1 px-4 py-4 border-2 border-black font-bold uppercase tracking-widest text-xs hover:bg-black hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDelete(deleteTargetId)}
-                className="flex-1 px-4 py-4 border-2 border-black bg-red-500 text-white font-bold uppercase tracking-widest text-xs hover:bg-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none"
-              >
-                Delete
-              </button>
+            <div className="px-8 py-8"><p className="text-black dark:text-white font-bold uppercase tracking-widest text-xs opacity-60">This action cannot be undone. All history will be lost.</p></div>
+            <div className="px-8 py-6 border-t-2 border-black dark:border-white flex gap-4">
+              <button onClick={() => setDeleteTargetId(null)} className="flex-1 px-4 py-4 border-2 border-black dark:border-white font-bold uppercase tracking-widest text-xs hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] text-black dark:text-white">Cancel</button>
+              <button onClick={() => handleDelete(deleteTargetId)} className="flex-1 px-4 py-4 border-2 border-black dark:border-white bg-red-500 text-white font-bold uppercase tracking-widest text-xs hover:bg-black dark:hover:bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]">Delete</button>
             </div>
           </div>
         </div>
