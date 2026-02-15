@@ -13,3 +13,7 @@ export async function setSystemSetting(key: string, value: string) {
     create: { key, value },
   });
 }
+
+export function isDemoMode() {
+  return process.env.DEMO === "true";
+}

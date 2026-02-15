@@ -4,11 +4,19 @@ import { ServiceInfo, MonitorMetadata } from "@/lib/monitoring/types";
 import { fetchCoreStatus, getAvailableMonitorTypes } from "@/lib/monitoring/core-engine";
 import { db } from "@/lib/db";
 import { createSession, deleteSession } from "@/lib/session";
-import { getSystemSetting, setSystemSetting } from "@/lib/settings";
+import { getSystemSetting, setSystemSetting, isDemoMode } from "@/lib/settings";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
 export async function getDashboardData() {
+  if (isDemoMode()) {
+    return {
+      monitors: [], // Client will load from demo-client
+      monitorTypes: await getAvailableMonitorTypes(),
+      orgName: "Overseer Demo",
+      notificationChannels: []
+    };
+  }
   const [monitors, monitorTypes, orgName, notificationChannels] = await Promise.all([
     getServiceMonitors(),
     getAvailableMonitorTypes(),
@@ -25,6 +33,7 @@ export async function getDashboardData() {
 }
 
 export async function checkDatabaseReady() {
+  if (isDemoMode()) return { ready: true, isDemo: true };
   try {
     await db.user.count();
     return { ready: true };
@@ -33,11 +42,16 @@ export async function checkDatabaseReady() {
   }
 }
 
+export async function getIsDemoMode() {
+  return isDemoMode();
+}
+
 export async function getOrganizationName() {
   return await getSystemSetting("orgName", "Overseer");
 }
 
 export async function updateOrganizationName(name: string) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     await setSystemSetting("orgName", name);
     revalidatePath("/");
@@ -52,6 +66,7 @@ export async function getTheme() {
 }
 
 export async function updateTheme(theme: "light" | "dark") {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     await setSystemSetting("theme", theme);
     revalidatePath("/", "layout");
@@ -67,6 +82,7 @@ export async function getDefaultPingInterval() {
 }
 
 export async function updateDefaultPingInterval(interval: number) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     if (interval < 10 || interval > 60) {
       return { success: false, error: "Interval must be between 10 and 60 seconds" };
@@ -132,6 +148,10 @@ export async function probeMonitor(url: string) {
 }
 
 export async function login(username: string, password: string) {
+  if (isDemoMode() && username === "demo" && password === "demo") {
+    await createSession("demo-user", "demo");
+    return { success: true };
+  }
   try {
     const user = await db.user.findUnique({ where: { username } });
     if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -180,6 +200,7 @@ export async function getServiceMonitors() {
 }
 
 export async function addServiceMonitor(type: string, name: string, config: Record<string, any>) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const defaultInterval = await getDefaultPingInterval();
     const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
@@ -202,6 +223,7 @@ export async function addServiceMonitor(type: string, name: string, config: Reco
 }
 
 export async function updateServiceMonitor(id: string, name: string, config: Record<string, any>) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const defaultInterval = await getDefaultPingInterval();
     const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
@@ -224,6 +246,7 @@ export async function updateServiceMonitor(id: string, name: string, config: Rec
 }
 
 export async function deleteServiceMonitor(id: string) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     await db.serviceMonitor.delete({ where: { id } });
     revalidatePath("/");
@@ -237,6 +260,17 @@ const lastFetchTimes = new Map<string, number>();
 const RATE_LIMIT_MS = 2000;
 
 export async function fetchMonitorStatus(monitorId: string) {
+  if (isDemoMode()) {
+    return {
+      success: true,
+      data: [{ 
+        status: 'running', 
+        latency: Math.floor(Math.random() * 50) + 10,
+        lastCheck: new Date().toISOString()
+      }],
+      monitorName: "Demo Monitor"
+    };
+  }
   const now = Date.now();
   const lastFetch = lastFetchTimes.get(monitorId) || 0;
   if (now - lastFetch < RATE_LIMIT_MS) {
@@ -304,6 +338,23 @@ export async function getMonitorUptimeStats(monitorId: string) {
 }
 
 export async function getMonitorHistory(monitorId: string, limit = 50) {
+  if (isDemoMode()) {
+    // Return empty history or mock history for demo
+    const history = [];
+    const now = new Date();
+    for (let i = 0; i < limit; i++) {
+        const time = new Date(now.getTime() - i * 60000);
+        history.push({
+            timestamp: time,
+            data: [{ 
+                status: 'running', 
+                latency: Math.floor(Math.random() * 50) + 10,
+                lastCheck: time.toISOString()
+            }]
+        });
+    }
+    return history.reverse();
+  }
   try {
     const metrics = await db.metric.findMany({
       where: { monitorId },
@@ -320,6 +371,19 @@ export async function getMonitorHistory(monitorId: string, limit = 50) {
 }
 
 export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
+  if (isDemoMode()) {
+    const history = [];
+    const now = new Date();
+    for (let i = 0; i < days; i++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        history.push({ 
+            date: date.toISOString().split('T')[0], 
+            status: 'operational' 
+        });
+    }
+    return history.reverse();
+  }
   const history = [];
   const now = new Date();
   
@@ -374,6 +438,22 @@ export async function getStatusPages() {
 }
 
 export async function getStatusPageBySlug(slug: string) {
+  if (isDemoMode()) {
+    return {
+      id: "demo-sp",
+      title: "Public Status",
+      slug: slug,
+      description: "Demo status page",
+      showMetrics: true,
+      showHistory: true,
+      showBanner: true,
+      showRecentHistory: true,
+      monitors: [
+        { id: "demo-1", name: "Main Website", type: "HTTP" },
+        { id: "demo-2", name: "API Gateway", type: "HTTP" }
+      ]
+    };
+  }
   return await db.statusPage.findUnique({
     where: { slug },
     include: { monitors: true },
@@ -381,6 +461,7 @@ export async function getStatusPageBySlug(slug: string) {
 }
 
 export async function createStatusPage(data: any) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
     const page = await db.statusPage.create({
@@ -407,6 +488,7 @@ export async function createStatusPage(data: any) {
 }
 
 export async function updateStatusPage(id: string, data: any) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
     // Disconnect all and reconnect new ones to sync monitorIds
@@ -444,6 +526,7 @@ export async function updateStatusPage(id: string, data: any) {
 }
 
 export async function deleteStatusPage(id: string) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const page = await db.statusPage.delete({ where: { id } });
     revalidatePath("/status-pages");
@@ -462,6 +545,7 @@ export async function getNotificationChannels() {
 }
 
 export async function createNotificationChannel(name: string, type: string, config: any) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     const channel = await db.notificationChannel.create({
       data: {
@@ -478,6 +562,7 @@ export async function createNotificationChannel(name: string, type: string, conf
 }
 
 export async function deleteNotificationChannel(id: string) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     await db.notificationChannel.delete({ where: { id } });
     revalidatePath("/settings");
@@ -488,6 +573,7 @@ export async function deleteNotificationChannel(id: string) {
 }
 
 export async function updateMonitorNotificationChannels(monitorId: string, channelIds: string[]) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
   try {
     await db.serviceMonitor.update({
       where: { id: monitorId },

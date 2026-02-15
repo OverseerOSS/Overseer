@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ServiceInfo } from "@/lib/monitoring/types";
 import { fetchCoreStatus } from "@/lib/monitoring/core-engine";
+import { isDemoMode } from "@/lib/settings";
 
 // Disable caching for SSE
 export const dynamic = "force-dynamic";
@@ -11,6 +12,16 @@ const STREAM_INTERVAL = 1000;
 
 // Fetch monitor status (similar to fetchCoreStatus action but without rate limiting)
 async function fetchMonitorData(monitorId: string): Promise<{ success: boolean; data?: ServiceInfo[]; error?: string }> {
+  if (isDemoMode()) {
+    return {
+      success: true,
+      data: [{
+        status: 'running',
+        latency: Math.floor(Math.random() * 50) + 10,
+        lastCheck: new Date().toISOString()
+      }]
+    };
+  }
   const monitor = await db.serviceMonitor.findUnique({
     where: { id: monitorId },
   });
@@ -52,13 +63,15 @@ export async function GET(
 ) {
   const { id: monitorId } = await params;
 
-  // Verify monitor exists
-  const monitor = await db.serviceMonitor.findUnique({
-    where: { id: monitorId },
-  }).catch(() => null);
+  // Verify monitor exists (skip for demo mode)
+  if (!isDemoMode()) {
+    const monitor = await db.serviceMonitor.findUnique({
+      where: { id: monitorId },
+    }).catch(() => null);
 
-  if (!monitor) {
-    return new Response("Monitor not found", { status: 404 });
+    if (!monitor) {
+      return new Response("Monitor not found", { status: 404 });
+    }
   }
 
   // Create a readable stream for SSE

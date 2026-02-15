@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { isDemoMode } from "@/lib/settings";
 import LoginForm from "./login-form";
 
 export default async function LoginPage() {
+  const isDemo = isDemoMode();
   let userCount = 0;
   try {
     userCount = await db.user.count();
@@ -17,5 +19,5 @@ export default async function LoginPage() {
     redirect("/setup");
   }
 
-  return <LoginForm />;
+  return <LoginForm isDemo={isDemo} />;
 }

@@ -8,10 +8,12 @@ import {
   updateStatusPage, 
   deleteStatusPage,
   logout,
-  getTheme
+  getTheme,
+  getIsDemoMode
 } from "../actions";
 import { Sidebar } from "../components/Sidebar";
 import { ThemeSync } from "../components/ThemeSync";
+import { getDemoMonitors, getDemoStatusPages, saveDemoStatusPages } from "@/lib/demo-client";
 import { 
   Settings, 
   Plus, 
@@ -36,18 +38,28 @@ export default function StatusPagesManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [theme, setTheme] = useState<string>("light");
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [pages, mons, currentTheme] = await Promise.all([
-          getStatusPages(),
-          getServiceMonitors(),
-          getTheme()
-        ]);
-        setStatusPages(pages);
-        setMonitors(mons);
-        setTheme(currentTheme);
+        const demoMode = await getIsDemoMode();
+        setIsDemo(demoMode);
+
+        if (demoMode) {
+          setStatusPages(getDemoStatusPages());
+          setMonitors(getDemoMonitors());
+          setTheme(await getTheme());
+        } else {
+          const [pages, mons, currentTheme] = await Promise.all([
+            getStatusPages(),
+            getServiceMonitors(),
+            getTheme()
+          ]);
+          setStatusPages(pages);
+          setMonitors(mons);
+          setTheme(currentTheme);
+        }
       } catch (err) {
         console.error("Failed to load status pages:", err);
       } finally {
@@ -77,14 +89,27 @@ export default function StatusPagesManager() {
   const handleSave = async (data: any) => {
     setIsSaving(true);
     try {
-      if (data.id) {
-        await updateStatusPage(data.id, data);
+      if (isDemo) {
+        let updated;
+        if (data.id) {
+          updated = statusPages.map(p => p.id === data.id ? { ...p, ...data } : p);
+        } else {
+          const newDoc = { ...data, id: 'demo-sp-' + Math.random().toString(36).substr(2, 9) };
+          updated = [...statusPages, newDoc];
+        }
+        setStatusPages(updated);
+        saveDemoStatusPages(updated);
+        setSelectedPage(null);
       } else {
-        await createStatusPage(data);
+        if (data.id) {
+          await updateStatusPage(data.id, data);
+        } else {
+          await createStatusPage(data);
+        }
+        const updatedPages = await getStatusPages();
+        setStatusPages(updatedPages);
+        setSelectedPage(null);
       }
-      const updatedPages = await getStatusPages();
-      setStatusPages(updatedPages);
-      setSelectedPage(null);
     } catch (err) {
       console.error("Failed to save status page:", err);
     } finally {
@@ -95,9 +120,16 @@ export default function StatusPagesManager() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this status page?")) return;
     try {
-      await deleteStatusPage(id);
-      setStatusPages(statusPages.filter(p => p.id !== id));
-      setSelectedPage(null);
+      if (isDemo) {
+        const updated = statusPages.filter(p => p.id !== id);
+        setStatusPages(updated);
+        saveDemoStatusPages(updated);
+        setSelectedPage(null);
+      } else {
+        await deleteStatusPage(id);
+        setStatusPages(statusPages.filter(p => p.id !== id));
+        setSelectedPage(null);
+      }
     } catch (err) {
       console.error("Failed to delete status page:", err);
     }
@@ -106,7 +138,7 @@ export default function StatusPagesManager() {
   if (isLoading) {
     return (
       <div className="flex bg-white dark:bg-[#0a0a0a] min-h-screen">
-        <Sidebar monitors={[]} onLogout={logout} />
+        <Sidebar monitors={[]} onLogout={logout} isDemo={isDemo} />
         <div className="flex-1 p-8 text-black dark:text-white">Loading Status Pages...</div>
       </div>
     );
@@ -115,7 +147,7 @@ export default function StatusPagesManager() {
   return (
     <div className="flex bg-white dark:bg-[#0a0a0a] min-h-screen font-sans selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black">
       <ThemeSync theme={theme} />
-      <Sidebar monitors={monitors} onLogout={logout} />
+      <Sidebar monitors={monitors} onLogout={logout} isDemo={isDemo} />
       
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-12">

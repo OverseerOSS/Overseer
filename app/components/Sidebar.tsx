@@ -12,9 +12,10 @@ interface SidebarProps {
   onLogout: () => void;
   onDeleteMonitor?: (id: string) => void;
   onEditMonitor?: (id: string) => void;
+  isDemo?: boolean;
 }
 
-export function Sidebar({ monitors, orgName = "Overseer", selectedMonitorId, onLogout, onDeleteMonitor, onEditMonitor }: SidebarProps) {
+export function Sidebar({ monitors, orgName = "Overseer", selectedMonitorId, onLogout, onDeleteMonitor, onEditMonitor, isDemo }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -44,7 +45,12 @@ export function Sidebar({ monitors, orgName = "Overseer", selectedMonitorId, onL
           </div>
           <div className="ml-1">
             <div className="text-lg font-bold tracking-tighter truncate max-w-[120px] uppercase text-black dark:text-white" title={orgName}>{orgName}</div>
-            <div className="text-[10px] font-bold uppercase tracking-widest opacity-50 text-black dark:text-white">Monitoring</div>
+            <div className="flex items-center gap-2">
+              <div className="text-[10px] font-bold uppercase tracking-widest opacity-50 text-black dark:text-white">Monitoring</div>
+              {isDemo && (
+                <div className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 animate-pulse">DEMO</div>
+              )}
+            </div>
           </div>
         </Link>
       </div>

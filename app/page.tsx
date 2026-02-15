@@ -13,7 +13,8 @@ import {
   getMonitorUptimeStats,
   updateServiceMonitor,
   probeMonitor,
-  updateMonitorNotificationChannels
+  updateMonitorNotificationChannels,
+  getIsDemoMode
 } from "./actions";
 import { ServiceInfo, MonitorMetadata } from "@/lib/monitoring/types";
 import { GenericMonitorCard } from "./components/GenericMonitorCard";
@@ -21,6 +22,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
 import { Plus, X, Zap, Bell } from "lucide-react";
 import Link from "next/link";
+import { getDemoMonitors, saveDemoMonitors, getDemoOrgName, saveDemoOrgName } from "@/lib/demo-client";
 
 interface Monitor {
   id: string;
@@ -61,6 +63,7 @@ function DashboardContent() {
   const [error, setError] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [editingMonitorId, setEditingMonitorId] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const handleProbe = async () => {
     const url = newMonitorConfig.url;
@@ -209,14 +212,42 @@ function DashboardContent() {
     }
 
     let result;
-    if (editingMonitorId) {
-      result = await updateServiceMonitor(editingMonitorId, newMonitorName, finalConfig);
+    if (isDemo) {
+      if (editingMonitorId) {
+        setMonitors(prev => {
+          const updated = prev.map(m => m.id === editingMonitorId ? { ...m, name: newMonitorName, config: JSON.stringify(finalConfig), url: finalConfig.url || null, method: finalConfig.method || "GET" } : m);
+          saveDemoMonitors(updated);
+          return updated;
+        });
+        result = { success: true };
+      } else {
+        const newMon = {
+          id: Math.random().toString(36).substr(2, 9),
+          name: newMonitorName,
+          type: selectedTypeId,
+          config: JSON.stringify(finalConfig),
+          url: finalConfig.url || null,
+          method: finalConfig.method || "GET",
+          interval: 60
+        };
+        setMonitors(prev => {
+          const updated = [...prev, newMon];
+          saveDemoMonitors(updated);
+          return updated;
+        });
+        if (!selectedMonitorId) setSelectedMonitorId(newMon.id);
+        result = { success: true, monitor: newMon };
+      }
     } else {
-      result = await addServiceMonitor(selectedTypeId, newMonitorName, finalConfig);
-    }
-    
-    if (result.success && result.monitor) {
-      await updateMonitorNotificationChannels(result.monitor.id, selectedChannelIds);
+      if (editingMonitorId) {
+        result = await updateServiceMonitor(editingMonitorId, newMonitorName, finalConfig);
+      } else {
+        result = await addServiceMonitor(selectedTypeId, newMonitorName, finalConfig);
+      }
+      
+      if (result.success && result.monitor) {
+        await updateMonitorNotificationChannels(result.monitor.id, selectedChannelIds);
+      }
     }
 
     setIsSubmitting(false);
@@ -229,14 +260,28 @@ function DashboardContent() {
       setSelectedTypeId("");
       setSelectedChannelIds([]);
       setError("");
-      const monitorsList = await getServiceMonitors();
-      setMonitors(monitorsList as any);
+      if (!isDemo) {
+        const monitorsList = await getServiceMonitors();
+        setMonitors(monitorsList as any);
+      }
     } else {
       setError(result.error || "Failed to save monitor");
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (isDemo) {
+      setMonitors(prev => {
+        const updated = prev.filter(m => m.id !== id);
+        saveDemoMonitors(updated);
+        if (selectedMonitorId === id) {
+          setSelectedMonitorId(updated[0]?.id || null);
+        }
+        return updated;
+      });
+      setDeleteTargetId(null);
+      return;
+    }
     const result = await deleteServiceMonitor(id);
     if (result.success) {
       setDeleteTargetId(null);
@@ -283,6 +328,7 @@ function DashboardContent() {
             setIsAddModalOpen(true);
           }
         }}
+        isDemo={isDemo}
       />
 
       <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white dark:bg-[#0a0a0a]">

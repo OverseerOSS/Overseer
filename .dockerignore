@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+*.ipynb
+README.md
+CONTRIBUTING.md
+playwright-report
+test-results
+tests
+docker-compose.yaml
+Dockerfile

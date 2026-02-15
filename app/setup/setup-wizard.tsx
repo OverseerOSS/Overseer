@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createAdminUser, runMigration } from "./actions";
+import { getIsDemoMode } from "../actions";
 import { ArrowRight, CheckCircle, Database, Shield, Server, Loader2 } from "lucide-react";
+import { saveDemoOrgName } from "@/lib/demo-client";
 
 type SetupStep = "welcome" | "migration" | "account" | "finish";
 
@@ -15,6 +17,11 @@ export default function SetupPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [migrationLog, setMigrationLog] = useState("");
+  const [isDemo, setIsDemo] = useState(false);
+
+  useEffect(() => {
+    getIsDemoMode().then(setIsDemo);
+  }, []);
 
   const startSetup = () => {
     setStep("migration");
@@ -28,13 +35,19 @@ export default function SetupPage() {
 
     try {
       await new Promise(r => setTimeout(r, 800));
-      const result = await runMigration();
-      if (result.success) {
-        setMigrationLog((prev) => prev + "\nDatabase schema up to date.");
+      if (isDemo) {
+        setMigrationLog((prev) => prev + "\n[DEMO] Skipping real migration...");
+        setMigrationLog((prev) => prev + "\n[DEMO] Mock database initialized.");
         setTimeout(() => setStep("account"), 1000);
       } else {
-        setError(result.error || "Migration failed");
-        setMigrationLog((prev) => prev + "\nError: " + result.error);
+        const result = await runMigration();
+        if (result.success) {
+          setMigrationLog((prev) => prev + "\nDatabase schema up to date.");
+          setTimeout(() => setStep("account"), 1000);
+        } else {
+          setError(result.error || "Migration failed");
+          setMigrationLog((prev) => prev + "\nError: " + result.error);
+        }
       }
     } catch (err: any) {
       setError("Migration failed: " + err.message);
@@ -58,11 +71,16 @@ export default function SetupPage() {
 
     setIsLoading(true);
     try {
-      const result = await createAdminUser(username, password, orgName);
-      if (result.success) {
+      if (isDemo) {
+        saveDemoOrgName(orgName || "Overseer Demo");
         setStep("finish");
       } else {
-        setError(result.error || "Failed to create account");
+        const result = await createAdminUser(username, password, orgName);
+        if (result.success) {
+          setStep("finish");
+        } else {
+          setError(result.error || "Failed to create account");
+        }
       }
     } catch (err) {
       setError("An unexpected error occurred");
