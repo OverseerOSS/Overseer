@@ -13,22 +13,23 @@ model User {
   password String
 }
 
-model InstalledExtension {
-  id          String @id @default(cuid())
-  extensionId String @unique
-  config      String? // Global configuration (JSON)
-  installedAt DateTime @default(now())
-}
-
 model ServiceMonitor {
   id          String @id @default(cuid())
   name        String
-  extensionId String 
-  config      String // JSON string
+  description String?
+  type        String   @default("http")
+  url         String?
+  method      String?  @default("GET")
+  config      String   @default("{}") // JSON string for specific settings (headers, body etc)
+  interval    Int      @default(60) // Polling interval in seconds
+  active      Boolean  @default(true)
+  lastStatus  String   @default("unknown")
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
   order       Int      @default(0) // Display order
   metrics     Metric[]
+  statusPages StatusPage[]
+  notificationChannels NotificationChannel[]
 }
 
 model Metric {
@@ -39,6 +40,32 @@ model Metric {
   data      String   // JSON string storing { cpu, ram, ... }
 
   @@index([monitorId, timestamp])
+}
+
+model NotificationChannel {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   @default("discord")
+  config    String   @default("{}") // JSON: { webhookUrl: string }
+  active    Boolean  @default(true)
+  monitors  ServiceMonitor[]
+  createdAt DateTime @default(now())
+}
+
+model StatusPage {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  showMetrics Boolean  @default(false)
+  showCpu     Boolean  @default(true)
+  showRam     Boolean  @default(true)
+  showNetwork Boolean  @default(true)
+  showBanner  Boolean  @default(true)
+  showHistory Boolean  @default(true)
+  showRecentHistory Boolean @default(true)
+  config      Json?    // Advanced config: { monitorId: { includedServices: string[] } }
+  monitors    ServiceMonitor[]
 }
 
 model SystemSettings {

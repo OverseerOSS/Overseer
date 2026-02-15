@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
-:root {
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root,
+html.light {
   --background: #ffffff;
   --foreground: #111827;
+  color-scheme: light;
+}
+
+html.dark {
+  --background: #0a0a0a;
+  --foreground: #f3f4f6;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -21,6 +31,8 @@
 
   html {
     scroll-behavior: smooth;
+    zoom: 0.7;
+    background: var(--background);
   }
 
   body {
@@ -29,6 +41,26 @@
     font-family: var(--font-geist-sans), -apple-system, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar to match brutalist theme and avoid white boxes */
+  ::-webkit-scrollbar {
+    width: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--background);
+    border-left: 2px solid var(--foreground);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--foreground);
+    border: 2px solid var(--background);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #666;
   }
 
   h1 {
@@ -54,13 +86,13 @@
   }
 
   a {
-    color: #000000;
+    color: var(--foreground);
     text-decoration: underline;
     transition: color 200ms;
   }
 
   a:hover {
-    color: #333333;
+    opacity: 0.7;
   }
 
   select {
@@ -85,6 +117,16 @@
   .input {
     @apply w-full px-4 py-3 bg-white border-2 border-black rounded-none text-xs font-bold uppercase tracking-widest transition-all focus:outline-none focus:border-black focus:ring-1 focus:ring-black;
   }
+}
+
+/* Zoom compensation — override viewport-relative heights so they fill
+   the *physical* viewport after the 0.7 zoom factor is applied.
+   Placed outside @layer so these beat Tailwind's layered utilities. */
+.h-screen {
+  height: calc(100vh / 0.7) !important;
+}
+.min-h-screen {
+  min-height: calc(100vh / 0.7) !important;
 }
 
 body {

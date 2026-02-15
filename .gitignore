@@ -16,13 +16,23 @@
 # next.js
 /.next/
 /out/
+/build
+
+# testing
+/coverage
+/playwright-report
+/test-results
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
+.turbo
+*.local
+.kombai
 
 # debug
 npm-debug.log*

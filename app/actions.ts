@@ -1,24 +1,26 @@
 "use server";
 
-import { getExtension, loadExtensions } from "./extensions/loader";
-import { ServiceInfo, ExtensionMetadata } from "./extensions/types";
+import { ServiceInfo, MonitorMetadata } from "@/lib/monitoring/types";
+import { fetchCoreStatus, getAvailableMonitorTypes } from "@/lib/monitoring/core-engine";
 import { db } from "@/lib/db";
 import { createSession, deleteSession } from "@/lib/session";
 import { getSystemSetting, setSystemSetting } from "@/lib/settings";
+import bcrypt from "bcryptjs";
+import { revalidatePath } from "next/cache";
 
 export async function getDashboardData() {
-  const [monitors, installedExtensions, allExtensions, orgName] = await Promise.all([
+  const [monitors, monitorTypes, orgName, notificationChannels] = await Promise.all([
     getServiceMonitors(),
-    getInstalledExtensions(),
-    getAvailableExtensionsMetadata(),
-    getOrganizationName()
+    getAvailableMonitorTypes(),
+    getOrganizationName(),
+    getNotificationChannels()
   ]);
 
   return {
     monitors,
-    installedExtensions,
-    allExtensions,
-    orgName
+    monitorTypes,
+    orgName,
+    notificationChannels
   };
 }
 
@@ -27,7 +29,6 @@ export async function checkDatabaseReady() {
     await db.user.count();
     return { ready: true };
   } catch (error: any) {
-    // P2021: Table does not exist
     return { ready: false, error: error.code === 'P2021' ? 'setup_required' : error.message };
   }
 }
@@ -46,138 +47,179 @@ export async function updateOrganizationName(name: string) {
   }
 }
 
-import bcrypt from "bcryptjs";
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
-// --- Auth Actions ---
-
-export async function login(username: string, password: string) {
-  const userCount = await db.user.count();
-  if (userCount === 0) {
-    return {
-      success: false,
-      error: "No users exist. Please create an account.",
-    };
-  }
-
-  const user = await db.user.findUnique({ where: { username } });
-
-  if (!user) {
-    return { success: false, error: "Invalid credentials" };
-  }
-
-  const validPassword = await bcrypt.compare(password, user.password);
-  if (!validPassword) {
-    return { success: false, error: "Invalid credentials" };
-  }
-
-  await createSession(user.id, user.username);
-  return { success: true };
+export async function getTheme() {
+  return await getSystemSetting("theme", "light");
 }
 
-export async function createAccount(username: string, password: string) {
-  const userCount = await db.user.count();
-  if (userCount > 0) {
-    return { success: false, error: "System already setup. Please login." };
+export async function updateTheme(theme: "light" | "dark") {
+  try {
+    await setSystemSetting("theme", theme);
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update theme" };
+  }
+}
+
+export async function getDefaultPingInterval() {
+  const val = await getSystemSetting("defaultPingInterval", "60");
+  return parseInt(val, 10);
+}
+
+export async function updateDefaultPingInterval(interval: number) {
+  try {
+    if (interval < 10 || interval > 60) {
+      return { success: false, error: "Interval must be between 10 and 60 seconds" };
+    }
+    await setSystemSetting("defaultPingInterval", interval.toString());
+    revalidatePath("/settings");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update default ping interval" };
+  }
+}
+
+export async function probeMonitor(url: string) {
+  if (!url) return { success: false, error: "URL is required" };
+  
+  // Normalize URL if protocol is missing
+  let targetUrl = url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    targetUrl = `https://${url}`;
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  try {
+    const start = Date.now();
+    const response = await fetch(targetUrl, { 
+      method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Overseer/1.0' },
+      cache: 'no-store'
+    });
+    const latency = Date.now() - start;
 
-  const user = await db.user.create({
-    data: { username, password: passwordHash },
-  });
+    return {
+      success: true,
+      suggestions: {
+        url: targetUrl,
+        expectedStatus: response.status,
+        method: 'GET',
+        timeout: Math.max(2000, Math.min(10000, latency * 3)), // 3x the actual latency as buffer
+        advancedSsl: targetUrl.startsWith('https://')
+      }
+    };
+  } catch (err: any) {
+    // If https fails, try http
+    if (targetUrl.startsWith('https://')) {
+        try {
+            const httpUrl = targetUrl.replace('https://', 'http://');
+            const start = Date.now();
+            const response = await fetch(httpUrl, { method: 'GET', cache: 'no-store' });
+            const latency = Date.now() - start;
+            return {
+                success: true,
+                suggestions: {
+                    url: httpUrl,
+                    expectedStatus: response.status,
+                    method: 'GET',
+                    timeout: Math.max(2000, Math.min(10000, latency * 3)),
+                    advancedSsl: false
+                }
+            };
+        } catch (e) {}
+    }
+    return { success: false, error: "Failed to connect to target URL" };
+  }
+}
 
-  await createSession(user.id, user.username);
-  return { success: true };
+export async function login(username: string, password: string) {
+  try {
+    const user = await db.user.findUnique({ where: { username } });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return { error: "Invalid credentials" };
+    }
+
+    await createSession(user.id, user.username);
+    return { success: true };
+  } catch (error) {
+    return { error: "An unexpected error occurred" };
+  }
+}
+
+export async function createAccount(data: any) {
+  const { username, password, orgName } = data;
+  const hashedPassword = await bcrypt.hash(password, 10);
+  
+  try {
+    const user = await db.user.create({
+      data: {
+        username,
+        password: hashedPassword
+      }
+    });
+
+    if (orgName) {
+      await setSystemSetting("orgName", orgName);
+    }
+
+    await createSession(user.id, user.username);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create account:", error);
+    return { success: false, error: "Failed to create account" };
+  }
 }
 
 export async function logout() {
   await deleteSession();
-  redirect("/login");
 }
 
-// --- Extension Management (Settings) ---
+export async function getServiceMonitors() {
+  return await db.serviceMonitor.findMany({
+    orderBy: { order: "asc" },
+  });
+}
 
-export async function toggleExtensionInstall(
-  extensionId: string,
-  install: boolean
-) {
+export async function addServiceMonitor(type: string, name: string, config: Record<string, any>) {
   try {
-    if (install) {
-      await db.installedExtension.upsert({
-        where: { extensionId },
-        update: {},
-        create: { extensionId },
-      });
-    } else {
-      await db.installedExtension.deleteMany({
-        where: { extensionId },
-      });
-    }
-    revalidatePath("/settings");
+    const defaultInterval = await getDefaultPingInterval();
+    const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
+
+    const monitor = await db.serviceMonitor.create({
+      data: {
+        type,
+        name,
+        config: JSON.stringify(config),
+        url: config.url || null,
+        method: config.method || "GET",
+        interval: interval
+      },
+    });
     revalidatePath("/");
-    return { success: true };
+    return { success: true, monitor };
   } catch (error) {
-    return { success: false, error: "Failed to update extension status" };
+    return { success: false, error: "Failed to create monitor" };
   }
 }
 
-export async function getAvailableExtensionsMetadata(): Promise<ExtensionMetadata[]> {
-  const exts = await loadExtensions();
-  return exts.map(e => ({
-    id: e.id,
-    name: e.name,
-    description: e.description,
-    configSchema: e.configSchema,
-  }));
-}
-
-export async function getInstalledExtensions() {
-  const installed = await db.installedExtension.findMany();
-  return installed.map(i => i.extensionId);
-}
-
-// --- Monitor Management (Dashboard) ---
-
-export async function addServiceMonitor(
-  extensionId: string,
-  name: string,
-  config: Record<string, any>
-) {
+export async function updateServiceMonitor(id: string, name: string, config: Record<string, any>) {
   try {
-    // Find the extension
-    const extension = await getExtension(extensionId);
-    if (!extension) {
-      return { success: false, error: "Extension not found" };
-    }
+    const defaultInterval = await getDefaultPingInterval();
+    const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
 
-    // Call extension's prepareConfig lifecycle hook if it exists
-    let metadata: Record<string, any> | undefined;
-    if (extension.prepareConfig) {
-      const prepared = await extension.prepareConfig(config);
-      config = prepared.config;
-      metadata = prepared.metadata;
-    }
-
-    const configStr = JSON.stringify(config);
-    const monitor = await db.serviceMonitor.create({
+    const monitor = await db.serviceMonitor.update({
+      where: { id },
       data: {
         name,
-        extensionId,
-        config: configStr,
+        config: JSON.stringify(config),
+        url: config.url || null,
+        method: config.method || "GET",
+        interval: interval
       },
     });
-
     revalidatePath("/");
-
-    return {
-      success: true,
-      monitorId: monitor.id,
-      metadata, // Return metadata from prepareConfig (e.g., publicKey for display)
-    };
+    return { success: true, monitor };
   } catch (error) {
-    return { success: false, error: "Failed to add service monitor" };
+    return { success: false, error: "Failed to update monitor" };
   }
 }
 
@@ -191,130 +233,35 @@ export async function deleteServiceMonitor(id: string) {
   }
 }
 
-export async function getServiceMonitors() {
-  const monitors = await db.serviceMonitor.findMany({
-    orderBy: [
-      { order: "asc" },
-      { createdAt: "desc" },
-    ],
-  });
-  return monitors;
-}
-
-export async function reorderMonitor(monitorId: string, direction: "up" | "down") {
-  const monitor = await db.serviceMonitor.findUnique({ where: { id: monitorId } });
-  if (!monitor) return { success: false };
-
-  const allMonitors = await db.serviceMonitor.findMany({
-    orderBy: [
-      { order: "asc" },
-      { createdAt: "desc" },
-    ],
-  });
-
-  const index = allMonitors.findIndex((m) => m.id === monitorId);
-  if (index === -1) return { success: false };
-
-  const swapIndex = direction === "up" ? index - 1 : index + 1;
-  if (swapIndex < 0 || swapIndex >= allMonitors.length) return { success: false };
-
-  const target = allMonitors[swapIndex];
-
-  // If both have default 0 or same order, we need to re-index everything to ensure stability
-  const updates = [];
-  
-  // Create a new ordered list with the swap
-  const newOrder = [...allMonitors];
-  newOrder[index] = target;
-  newOrder[swapIndex] = monitor;
-
-  // Update all monitors with their new index
-  for (let i = 0; i < newOrder.length; i++) {
-    updates.push(
-      db.serviceMonitor.update({
-        where: { id: newOrder[i].id },
-        data: { order: i },
-      })
-    );
-  }
-
-  await db.$transaction(updates);
-  revalidatePath("/");
-  return { success: true };
-}
-
-// --- Data Fetching ---
-
-// Rate limiting: track last fetch time per monitor
 const lastFetchTimes = new Map<string, number>();
-const RATE_LIMIT_MS = 1000; // 1 second minimum between fetches
+const RATE_LIMIT_MS = 2000;
 
 export async function fetchMonitorStatus(monitorId: string) {
-  // Rate limiting check
   const now = Date.now();
   const lastFetch = lastFetchTimes.get(monitorId) || 0;
   if (now - lastFetch < RATE_LIMIT_MS) {
-    return {
-      success: false,
-      error: "Rate limited. Please wait before fetching again.",
-    };
+    return { success: false, error: "Rate limited" };
   }
   lastFetchTimes.set(monitorId, now);
 
-  const monitor = await db.serviceMonitor.findUnique({
-    where: { id: monitorId },
-  });
+  const monitor = await db.serviceMonitor.findUnique({ where: { id: monitorId } });
   if (!monitor) return { success: false, error: "Monitor not found" };
 
-  const extension = await getExtension(monitor.extensionId);
-  if (!extension) return { success: false, error: "Extension missing" };
-
-  // Check for Global Config
-  const installedExt = await db.installedExtension.findUnique({
-    where: { extensionId: monitor.extensionId },
-  });
-  const globalConfig = installedExt?.config
-    ? JSON.parse(installedExt.config)
-    : {};
-
   try {
-    const monitorConfig = JSON.parse(monitor.config);
-    // Merge: Monitor config takes precedence OVER global? Or Global over Monitor?
-    // Typically: Global fills gaps. Monitor overrides.
-    const finalConfig = { ...globalConfig, ...monitorConfig };
-
-    // Remove keys that are empty strings if they exist in both (cleanup)
-    Object.keys(finalConfig).forEach(key => {
-      if (finalConfig[key] === "" || finalConfig[key] === null) {
-        delete finalConfig[key];
-        // If global had it, restore it? No, spread operator handles overwrite.
-        // But if monitorConfig has "apiKey": "" (empty), we might want to fallback to global?
-        // Let's explicitly check:
-        if (monitorConfig[key] === "" && globalConfig[key]) {
-          finalConfig[key] = globalConfig[key];
-        }
+    const config = JSON.parse(monitor.config);
+    const data = await fetchCoreStatus(monitor.type, { 
+      alias: monitor.name, 
+      ...config, 
+      url: monitor.url, 
+      method: monitor.method 
+    });
+    
+    await db.metric.create({
+      data: {
+        monitorId: monitor.id,
+        data: JSON.stringify(data),
       }
     });
-
-    const data = await extension.fetchStatus(finalConfig);
-
-    // Save metrics to database (fire and forget / side effect)
-    // We don't await this to keep response fast, but in serverless/lambdas this might be risky.
-    // Given this is a VPS/Node env, it's generally okay, but safer to await or use waitUntil if available.
-    // For now, we await it to ensure it's saved.
-    try {
-        await db.metric.create({
-            data: {
-                monitorId: monitor.id,
-                data: JSON.stringify(data),
-            }
-        });
-        
-        // Optional: Prune old metrics? Maybe keep last 24h?
-        // Doing this on every write is expensive. A cron job would be better.
-    } catch (err) {
-        console.error("Failed to save metrics:", err);
-    }
 
     return { success: true, data, monitorName: monitor.name };
   } catch (error: any) {
@@ -322,81 +269,237 @@ export async function fetchMonitorStatus(monitorId: string) {
   }
 }
 
-export async function getMonitorHistory(monitorId: string, limit = 50) {
-    try {
-        const metrics = await db.metric.findMany({
-            where: { monitorId },
-            orderBy: { timestamp: 'desc' },
-            take: limit
-        });
-        
-        // Return in ascending order for graphing
-        return metrics.reverse().map(m => ({
-            timestamp: m.timestamp,
-            data: JSON.parse(m.data) as ServiceInfo[]
-        }));
-    } catch (error) {
-        console.error("Failed to fetch history:", error);
-        return [];
-    }
+export async function getMonitorUptimeStats(monitorId: string) {
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [last24h, last30d] = await Promise.all([
+    db.metric.findMany({
+      where: { monitorId, timestamp: { gte: dayAgo } },
+      select: { data: true }
+    }),
+    db.metric.findMany({
+      where: { monitorId, timestamp: { gte: thirtyDaysAgo } },
+      select: { data: true }
+    })
+  ]);
+
+  const calculateUptime = (metrics: any[]) => {
+    if (metrics.length === 0) return 100;
+    const running = metrics.filter(m => {
+      try {
+        const data = JSON.parse(m.data);
+        const services = Array.isArray(data) ? data : [];
+        return services.every((s: any) => s.status === 'running');
+      } catch { return false; }
+    }).length;
+    return (running / metrics.length) * 100;
+  };
+
+  return {
+    uptime24h: calculateUptime(last24h),
+    uptime30d: calculateUptime(last30d)
+  };
 }
 
-export async function testMonitorConnection(monitorId: string) {
+export async function getMonitorHistory(monitorId: string, limit = 50) {
   try {
-    const monitor = await db.serviceMonitor.findUnique({
-      where: { id: monitorId },
+    const metrics = await db.metric.findMany({
+      where: { monitorId },
+      orderBy: { timestamp: 'desc' },
+      take: limit
     });
-    if (!monitor) {
-      return { success: false, error: "Monitor not found" };
-    }
-
-    const extension = await getExtension(monitor.extensionId);
-    if (!extension) {
-      return { success: false, error: "Extension not found" };
-    }
-
-    // Check if extension supports connection testing
-    if (!extension.testConnection) {
-      return {
-        success: false,
-        error: "This extension does not support connection testing",
-      };
-    }
-
-    const config = JSON.parse(monitor.config);
-    const result = await extension.testConnection(config);
-
-    return result;
-  } catch (error: any) {
-    return { success: false, error: error.message };
+    return metrics.reverse().map(m => ({
+      timestamp: m.timestamp,
+      data: JSON.parse(m.data) as ServiceInfo[]
+    }));
+  } catch (error) {
+    return [];
   }
 }
 
-// --- Global Configuration ---
+export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
+  const history = [];
+  const now = new Date();
+  
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
 
-export async function saveGlobalConfig(
-  extensionId: string,
-  config: Record<string, any>
-) {
-  try {
-    const configStr = JSON.stringify(config);
-    await db.installedExtension.update({
-      where: { extensionId },
-      data: { config: configStr },
+  const metrics = await db.metric.findMany({
+    where: {
+      monitorId,
+      timestamp: { gte: startDate }
+    },
+    orderBy: { timestamp: 'asc' }
+  });
+
+  for (let i = 0; i < days; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    
+    const dayMetrics = metrics.filter(m => m.timestamp.toISOString().split('T')[0] === dateStr);
+    
+    if (dayMetrics.length === 0) {
+      history.push({ date: dateStr, status: 'no-data' });
+      continue;
+    }
+
+    const hasOutage = dayMetrics.some(m => {
+      try {
+        const data = JSON.parse(m.data);
+        const services = Array.isArray(data) ? data : [];
+        return services.some((s: any) => s.status !== 'running');
+      } catch { return true; }
     });
+
+    history.push({ 
+        date: dateStr, 
+        status: hasOutage ? 'outage' : 'operational' 
+    });
+  }
+  return history.reverse();
+}
+
+export async function getStatusPages() {
+  const pages = await db.statusPage.findMany({
+    include: { monitors: true },
+  });
+  return pages.map(p => ({
+    ...p,
+    name: p.title,
+    monitorIds: p.monitors.map(m => m.id)
+  }));
+}
+
+export async function getStatusPageBySlug(slug: string) {
+  return await db.statusPage.findUnique({
+    where: { slug },
+    include: { monitors: true },
+  });
+}
+
+export async function createStatusPage(data: any) {
+  try {
+    const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
+    const page = await db.statusPage.create({
+      data: {
+        title: name,
+        slug,
+        description,
+        showMetrics: showMetrics ?? false,
+        showHistory: showHistory ?? true,
+        showBanner: showBanner ?? true,
+        showRecentHistory: showRecentHistory ?? true,
+        monitors: {
+          connect: monitorIds.map((id: string) => ({ id }))
+        }
+      }
+    });
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + slug);
+    return { success: true, page };
+  } catch (error) {
+    console.error("Failed to create status page:", error);
+    return { success: false, error: "Failed to create status page" };
+  }
+}
+
+export async function updateStatusPage(id: string, data: any) {
+  try {
+    const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
+    // Disconnect all and reconnect new ones to sync monitorIds
+    await db.statusPage.update({
+      where: { id },
+      data: {
+        monitors: {
+          set: []
+        }
+      }
+    });
+
+    const page = await db.statusPage.update({
+      where: { id },
+      data: {
+        title: name,
+        slug,
+        description,
+        showMetrics: showMetrics ?? false,
+        showHistory: showHistory ?? true,
+        showBanner: showBanner ?? true,
+        showRecentHistory: showRecentHistory ?? true,
+        monitors: {
+          connect: monitorIds.map((mid: string) => ({ id: mid }))
+        }
+      }
+    });
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + slug);
+    return { success: true, page };
+  } catch (error) {
+    console.error("Failed to update status page:", error);
+    return { success: false, error: "Failed to update status page" };
+  }
+}
+
+export async function deleteStatusPage(id: string) {
+  try {
+    const page = await db.statusPage.delete({ where: { id } });
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + page.slug);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to delete status page:", error);
+    return { success: false, error: "Failed to delete status page" };
+  }
+}
+
+export async function getNotificationChannels() {
+  return await db.notificationChannel.findMany({
+    include: { monitors: { select: { id: true } } }
+  });
+}
+
+export async function createNotificationChannel(name: string, type: string, config: any) {
+  try {
+    const channel = await db.notificationChannel.create({
+      data: {
+        name,
+        type,
+        config: JSON.stringify(config)
+      }
+    });
+    revalidatePath("/settings");
+    return { success: true, channel };
+  } catch (error) {
+    return { success: false, error: "Failed to create notification channel" };
+  }
+}
+
+export async function deleteNotificationChannel(id: string) {
+  try {
+    await db.notificationChannel.delete({ where: { id } });
     revalidatePath("/settings");
     return { success: true };
   } catch (error) {
-    return { success: false, error: "Failed to save global config" };
+    return { success: false, error: "Failed to delete notification channel" };
   }
 }
 
-export async function getGlobalConfig(extensionId: string) {
-  const ext = await db.installedExtension.findUnique({
-    where: { extensionId },
-  });
-  if (ext?.config) {
-    return JSON.parse(ext.config);
+export async function updateMonitorNotificationChannels(monitorId: string, channelIds: string[]) {
+  try {
+    await db.serviceMonitor.update({
+      where: { id: monitorId },
+      data: {
+        notificationChannels: {
+          set: channelIds.map(id => ({ id }))
+        }
+      }
+    });
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update monitor notifications" };
   }
-  return {};
 }

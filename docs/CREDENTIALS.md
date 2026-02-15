@@ -163,7 +163,7 @@ const creds = decryptCredentials({
 
 ## Security Best Practices
 
-### ✅ DO
+### DO
 
 - **Always encrypt sensitive data** before storing in the database
 - **Use unique purpose strings** for each credential type
@@ -172,7 +172,7 @@ const creds = decryptCredentials({
 - **Use the `password` field type** in configSchema for sensitive inputs
 - **Mark fields with `encrypt: true`** in your config schema for documentation
 
-### ❌ DON'T
+### DON'T
 
 - **Never log decrypted credentials** (even in development)
 - **Don't store decrypted values** in persistent state

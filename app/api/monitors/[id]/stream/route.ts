@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { getExtension } from "@/app/extensions/loader";
 import { db } from "@/lib/db";
-import { ServiceInfo } from "@/app/extensions/types";
+import { ServiceInfo } from "@/lib/monitoring/types";
+import { fetchCoreStatus } from "@/lib/monitoring/core-engine";
 
 // Disable caching for SSE
 export const dynamic = "force-dynamic";
@@ -9,39 +9,22 @@ export const dynamic = "force-dynamic";
 // Stream interval in ms (1 second for near-realtime feel)
 const STREAM_INTERVAL = 1000;
 
-// Fetch monitor status (similar to fetchMonitorStatus action but without rate limiting)
+// Fetch monitor status (similar to fetchCoreStatus action but without rate limiting)
 async function fetchMonitorData(monitorId: string): Promise<{ success: boolean; data?: ServiceInfo[]; error?: string }> {
   const monitor = await db.serviceMonitor.findUnique({
     where: { id: monitorId },
   });
   if (!monitor) return { success: false, error: "Monitor not found" };
 
-  const extension = await getExtension(monitor.extensionId);
-  if (!extension) return { success: false, error: "Extension missing" };
-
-  // Get global config
-  const installedExt = await db.installedExtension.findUnique({
-    where: { extensionId: monitor.extensionId },
-  });
-  const globalConfig = installedExt?.config
-    ? JSON.parse(installedExt.config)
-    : {};
-
   try {
-    const monitorConfig = JSON.parse(monitor.config);
-    const finalConfig = { ...globalConfig, ...monitorConfig };
-
-    // Clean up empty values
-    Object.keys(finalConfig).forEach((key) => {
-      if (finalConfig[key] === "" || finalConfig[key] === null) {
-        delete finalConfig[key];
-        if (monitorConfig[key] === "" && globalConfig[key]) {
-          finalConfig[key] = globalConfig[key];
-        }
-      }
+    const monitorConfig = monitor.config ? JSON.parse(monitor.config) : {};
+    
+    // Fetch data using core engine
+    const data = await fetchCoreStatus(monitor.type, { 
+      ...monitorConfig, 
+      url: monitor.url, 
+      method: monitor.method 
     });
-
-    const data = await extension.fetchStatus(finalConfig);
 
     // Save to database (don't block the stream)
     db.metric

@@ -1,72 +1,69 @@
-# Overseer 🔭
+# Overseer
 
 A powerful, extensible infrastructure monitoring platform built with Next.js. Monitor servers, databases, APIs, containers, and more through a unified dashboard.
 
 ## Features
 
-- 📊 **Real-time Monitoring** - Track server metrics, API health, and service status
-- 🔌 **Plugin System** - Create custom monitoring extensions for any infrastructure
-- 🔐 **Secure Credentials** - Built-in encryption for API keys and passwords
-- 📈 **Historical Data** - View metrics over time with interactive graphs
-- 🚀 **Easy Setup** - Get started in minutes with simple configuration
+- Real-time Monitoring - Track server metrics, API health, and service status
 
-## Quick Start
+- Secure Credentials - Built-in encryption for API keys and passwords
+- Historical Data - View metrics over time with interactive graphs
+- Easy Setup - Get started in minutes with simple configuration
 
-### Prerequisites
+## Quick Start Guide
 
-- Node.js 18+ 
-- PostgreSQL database
-- Environment variables configured (see [Configuration](#configuration))
+Get Overseer up and running in less than 5 minutes:
 
-### Installation
+1. **Clone and Install**
+   ```bash
+   git clone https://github.com/OverseerOSS/Overseer.git
+   cd Overseer
+   npm install
+   ```
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd Overseer
+2. **Configure Environment**
+   Create a `.env` file in the root:
+   ```env
+   DATABASE_URL="postgresql://user:password@localhost:5432/overseer"
+   SESSION_SECRET="your-32-character-random-secret"
+   ```
 
-# Install dependencies
-npm install
+3. **Initialize Database**
+   ```bash
+   npx prisma migrate dev
+   ```
 
-# Set up database
-npx prisma migrate dev
-
-# Run the development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
+4. **Launch**
+   ```bash
+   npm run dev
+   ```
+   Access the dashboard at [http://localhost:3000](http://localhost:3000).
 
 ## Configuration
 
-Create a `.env.local` file in the root directory:
+Detailed configuration options:
 
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/overseer"
-SESSION_SECRET="your-very-long-random-secret-at-least-32-characters"
-```
+### Environment Variables
 
-Generate a secure `SESSION_SECRET`:
-```bash
-openssl rand -hex 32
-```
+- `DATABASE_URL`: Your PostgreSQL connection string.
+- `SESSION_SECRET`: A secure key for auth sessions. Generate one with `openssl rand -hex 32`.
 
 ## Built-in Monitors
 
-Overseer comes with these monitoring extensions:
 
-- **Linux Server** - Monitor CPU, RAM, and system metrics via SSH
-- **Dokploy** - Monitor Dokploy-managed containers and applications
+
+- Linux Server - Monitor CPU, RAM, and system metrics via SSH
+- Dokploy - Monitor Dokploy-managed containers and applications
 
 ## Documentation
 
-- 📖 **[Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md)** - Create your own monitoring extensions
-- 🔒 **[Credential Management](./docs/CREDENTIALS.md)** - Securely store API keys and secrets
-- 📚 **[Full Documentation](./docs/)** - Complete guides and references
+
+- [Credential Management](./docs/CREDENTIALS.md) - Securely store API keys and secrets
+- [Full Documentation](./docs/) - Complete guides and references
 
 ## Creating a Plugin
 
-Overseer uses a **drop-in plugin system**. Simply create a folder in `app/extensions/` and it will be automatically registered.
+Overseer uses a drop-in plugin system. Simply create a folder in `app/extensions/` and it will be automatically registered.
 
 ```typescript
 // app/extensions/my-plugin/index.ts
@@ -101,16 +98,14 @@ export const myPlugin: MonitoringExtension = {
 };
 ```
 
-See the [Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md) for complete documentation.
-
 ## Tech Stack
 
-- **Framework:** [Next.js 15](https://nextjs.org) with App Router
-- **Database:** [PostgreSQL](https://www.postgresql.org) with [Prisma ORM](https://www.prisma.io)
-- **Authentication:** Iron Session
-- **Styling:** [Tailwind CSS](https://tailwindcss.com)
-- **UI Components:** [shadcn/ui](https://ui.shadcn.com)
-- **Charts:** [Recharts](https://recharts.org)
+- Framework: [Next.js 15](https://nextjs.org) with App Router
+- Database: [PostgreSQL](https://www.postgresql.org) with [Prisma ORM](https://www.prisma.io)
+- Authentication: Iron Session
+- Styling: [Tailwind CSS](https://tailwindcss.com)
+- UI Components: [shadcn/ui](https://ui.shadcn.com)
+- Charts: [Recharts](https://recharts.org)
 
 ## Project Structure
 
@@ -132,14 +127,14 @@ Overseer/
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues.
+Contributions are welcomed. Please feel free to submit pull requests or open issues.
 
 ## License
 
-MIT License - see LICENSE file for details
+Overseer is released under the **BSD 3-Clause License**. See the LICENSE file for more information.
 
-## Need Help?
+## Support
 
-- 📖 Check the [documentation](./docs/)
-- 🐛 Open an [issue](../../issues)
-- 💬 Start a [discussion](../../discussions)
+- Check the [documentation](./docs/)
+- Open an [issue](../../issues)
+- Start a [discussion](../../discussions)
