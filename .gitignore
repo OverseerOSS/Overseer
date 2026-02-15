@@ -33,6 +33,7 @@
 .turbo
 *.local
 .kombai
+*.ipynb
 
 # debug
 npm-debug.log*
