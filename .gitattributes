@@ -1,0 +1,5 @@
+# Mark generated files to exclude them from language statistics
+playwright-report/** linguist-generated=true
+test-results/** linguist-generated=true
+package-lock.json linguist-generated=true
+node_modules/** linguist-generated=true
