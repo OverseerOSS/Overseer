@@ -61,8 +61,12 @@ export const MOCK_METRICS = MOCK_MONITORS.map(m => ({
     id: "endpoint-1",
     name: m.name,
     type: m.type.toLowerCase(),
-    status: 'running', 
-    latency: Math.floor(Math.random() * 100) + 20,
-    lastCheck: new Date().toISOString()
+    status: 'running' as const, 
+    metrics: {
+      latency: Math.floor(Math.random() * 100) + 20
+    },
+    details: {
+      lastCheck: new Date().toISOString()
+    }
   }])
 }));

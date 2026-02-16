@@ -272,6 +272,7 @@ async function fetchSshStatus(config: any): Promise<ServiceInfo[]> {
             resolve([{
                 id: "ssh-host",
                 name: alias || "ssh",
+                type: "ssh",
                 status: "error",
                 details: { host, error: err.message }
             }]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { 
   getStatusPages, 
   getServiceMonitors, 
@@ -32,6 +32,18 @@ import {
 } from "lucide-react";
 
 export default function StatusPagesManager() {
+  return (
+    <Suspense fallback={
+      <div className="flex bg-white dark:bg-[#0a0a0a] min-h-screen items-center justify-center">
+        <div className="text-black dark:text-white font-bold uppercase tracking-widest text-xs animate-pulse">Initializing Visibility...</div>
+      </div>
+    }>
+      <StatusPagesContent />
+    </Suspense>
+  );
+}
+
+function StatusPagesContent() {
   const [statusPages, setStatusPages] = useState<any[]>([]);
   const [monitors, setMonitors] = useState<any[]>([]);
   const [selectedPage, setSelectedPage] = useState<any>(null);

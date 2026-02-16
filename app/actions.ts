@@ -270,9 +270,13 @@ export async function fetchMonitorStatus(monitorId: string) {
         id: "demo-endpoint",
         name: "Demo Monitor",
         type: "http",
-        status: 'running', 
-        latency: Math.floor(Math.random() * 50) + 10,
-        lastCheck: new Date().toISOString()
+        status: 'running' as const, 
+        metrics: {
+          latency: Math.floor(Math.random() * 50) + 10
+        },
+        details: {
+          lastCheck: new Date().toISOString()
+        }
       }],
       monitorName: "Demo Monitor"
     };
@@ -362,9 +366,13 @@ export async function getMonitorHistory(monitorId: string, limit = 50) {
                 id: "demo-endpoint",
                 name: "Demo Monitor",
                 type: "http",
-                status: 'running', 
-                latency: Math.floor(Math.random() * 50) + 10,
-                lastCheck: time.toISOString()
+                status: 'running' as const, 
+                metrics: {
+                  latency: Math.floor(Math.random() * 50) + 10
+                },
+                details: {
+                  lastCheck: time.toISOString()
+                }
             }]
         });
     }
@@ -442,6 +450,30 @@ export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
 }
 
 export async function getStatusPages() {
+  if (isDemoMode()) {
+    return [
+      {
+        id: "demo-sp",
+        title: "Public Status",
+        slug: "public",
+        name: "Public Status",
+        description: "Demo status page",
+        showMetrics: true,
+        showHistory: true,
+        showBanner: true,
+        showRecentHistory: true,
+        showCpu: true,
+        showRam: true,
+        showNetwork: true,
+        config: {} as any,
+        monitorIds: ["demo-1", "demo-2"],
+        monitors: [
+            { id: "demo-1", name: "Main Website", type: "HTTP" },
+            { id: "demo-2", name: "API Gateway", type: "HTTP" }
+        ]
+      }
+    ];
+  }
   const pages = await db.statusPage.findMany({
     include: { monitors: true },
   });
@@ -463,6 +495,10 @@ export async function getStatusPageBySlug(slug: string) {
       showHistory: true,
       showBanner: true,
       showRecentHistory: true,
+      showCpu: true,
+      showRam: true,
+      showNetwork: true,
+      config: {} as any,
       monitors: [
         { id: "demo-1", name: "Main Website", type: "HTTP" },
         { id: "demo-2", name: "API Gateway", type: "HTTP" }
