@@ -1,12 +1,14 @@
 import { db } from "./db";
 import { fetchCoreStatus } from "./monitoring/core-engine";
 import { sendDiscordNotification } from "./notifications/discord";
+import { isDemoMode } from "./settings";
 
 let isPolling = false;
 const lastRunCache: Record<string, number> = {};
 
 export async function pollAllMonitors() {
-  if (isPolling) return;
+  // If we are in demo mode, we don't handle background polling for DB monitors
+  if (isPolling || isDemoMode()) return;
   isPolling = true;
 
   try {

@@ -1,5 +1,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Skip background worker during build or if explicitly disabled
+    if (process.env.SKIP_WORKER === "true") {
+      return;
+    }
+
     const { startBackgroundMonitoring } = await import("@/lib/monitor-worker");
     
     // Check if we are in a dev environment to avoid multiple intervals with Fast Refresh
