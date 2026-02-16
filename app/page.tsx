@@ -121,16 +121,29 @@ function DashboardContent() {
 
   const loadDashboard = async () => {
     try {
+        const demoMode = await getIsDemoMode();
+        setIsDemo(demoMode);
+
         const data = await getDashboardData();
-        if (data.monitors) {
-          setMonitors(data.monitors as any);
-          if (data.monitors.length > 0 && !selectedMonitorId) {
-            setSelectedMonitorId(data.monitors[0].id);
-          }
-        }
         setMonitorTypes(data.monitorTypes);
-        setOrgName(data.orgName);
         setNotificationChannels(data.notificationChannels);
+
+        if (demoMode) {
+          const mons = getDemoMonitors();
+          setMonitors(mons as any);
+          setOrgName(getDemoOrgName());
+          if (mons.length > 0 && !selectedMonitorId) {
+            setSelectedMonitorId(mons[0].id);
+          }
+        } else {
+          if (data.monitors) {
+            setMonitors(data.monitors as any);
+            if (data.monitors.length > 0 && !selectedMonitorId) {
+              setSelectedMonitorId(data.monitors[0].id);
+            }
+          }
+          setOrgName(data.orgName);
+        }
     } catch (err) { 
       console.error(err); 
     }
@@ -416,8 +429,8 @@ function DashboardContent() {
                            monitorData.length === 2 ? 'grid-cols-1 lg:grid-cols-2' : 
                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                         }`}>
-                           {monitorData.map(service => (
-                             <div key={service.id} className="bg-white dark:bg-black border-2 border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] flex flex-col hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] transition-all">
+                           {monitorData.map((service, index) => (
+                             <div key={service.id || `service-${index}`} className="bg-white dark:bg-black border-2 border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] flex flex-col hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] transition-all">
                                 <div className="px-5 py-4 border-b-2 border-black dark:border-white flex items-center justify-between bg-white dark:bg-black">
                                    <div className="flex items-center gap-3">
                                       <div className={`w-3 h-3 border-2 border-black dark:border-white ${

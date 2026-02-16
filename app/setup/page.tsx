@@ -1,8 +1,13 @@
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { isDemoMode } from "@/lib/settings";
 import SetupWizard from "./setup-wizard";
 
 export default async function SetupPage() {
+  if (isDemoMode()) {
+    return <SetupWizard />;
+  }
+
   let userCount = 0;
 
   try {

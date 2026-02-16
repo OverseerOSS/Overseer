@@ -9,11 +9,13 @@ import {
   getServiceMonitors,
   logout,
   getDefaultPingInterval,
-  updateDefaultPingInterval
+  updateDefaultPingInterval,
+  getIsDemoMode
 } from "../actions";
 import { Sidebar } from "../components/Sidebar";
 import { NotificationsSettings } from "../components/NotificationsSettings";
 import { Save, Settings, Moon, Sun, Sliders, Bell } from "lucide-react";
+import { getDemoMonitors, getDemoOrgName, saveDemoOrgName } from "@/lib/demo-client";
 
 export default function SettingsPage() {
     return (
@@ -30,19 +32,30 @@ function SettingsContent() {
   const [defaultPingInterval, setDefaultPingInterval] = useState(60);
   const [monitors, setMonitors] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     // Load initial data
-    Promise.all([
-        getOrganizationName(), 
-        getTheme(),
-        getServiceMonitors(),
-        getDefaultPingInterval()
-    ]).then(([name, currentTheme, mons, interval]) => {
-        setOrgName(name);
-        setTheme(currentTheme as "light" | "dark");
-        setMonitors(mons);
-        setDefaultPingInterval(interval);
+    getIsDemoMode().then(demoMode => {
+      setIsDemo(demoMode);
+      if (demoMode) {
+        setOrgName(getDemoOrgName());
+        setTheme("light");
+        setMonitors(getDemoMonitors());
+        setDefaultPingInterval(60);
+      } else {
+        Promise.all([
+            getOrganizationName(), 
+            getTheme(),
+            getServiceMonitors(),
+            getDefaultPingInterval()
+        ]).then(([name, currentTheme, mons, interval]) => {
+            setOrgName(name);
+            setTheme(currentTheme as "light" | "dark");
+            setMonitors(mons);
+            setDefaultPingInterval(interval);
+        });
+      }
     });
   }, []);
 
@@ -62,11 +75,15 @@ function SettingsContent() {
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    await Promise.all([
-        updateOrganizationName(orgName),
-        updateTheme(theme),
-        updateDefaultPingInterval(defaultPingInterval)
-    ]);
+    if (isDemo) {
+      saveDemoOrgName(orgName);
+    } else {
+      await Promise.all([
+          updateOrganizationName(orgName),
+          updateTheme(theme),
+          updateDefaultPingInterval(defaultPingInterval)
+      ]);
+    }
     setIsSaving(false);
   };
 
@@ -76,6 +93,7 @@ function SettingsContent() {
         monitors={monitors} 
         orgName={orgName} 
         onLogout={logout} 
+        isDemo={isDemo}
       />
 
       <div className="flex-1 ml-64 flex flex-col overflow-hidden bg-white dark:bg-[#0a0a0a]">

@@ -107,7 +107,7 @@ export default function LoginPage({ isDemo }: { isDemo?: boolean }) {
             disabled={isLoading}
             className="group relative flex w-full justify-center border-2 border-black dark:border-white bg-black dark:bg-white px-4 py-5 text-sm font-bold text-white dark:text-black uppercase tracking-[0.2em] hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
           >
-             {isLoading ? "AUTHENTICATING..." : "Enter Portal"}
+             {isLoading ? "AUTHENTICATING..." : "Login"}
           </button>
         </form>
       </div>

@@ -16,6 +16,9 @@ async function fetchMonitorData(monitorId: string): Promise<{ success: boolean; 
     return {
       success: true,
       data: [{
+        id: "demo-endpoint",
+        name: "Demo Monitor",
+        type: "http",
         status: 'running',
         latency: Math.floor(Math.random() * 50) + 10,
         lastCheck: new Date().toISOString()

@@ -47,6 +47,7 @@ export async function getIsDemoMode() {
 }
 
 export async function getOrganizationName() {
+  if (isDemoMode()) return "Overseer Demo";
   return await getSystemSetting("orgName", "Overseer");
 }
 
@@ -62,6 +63,7 @@ export async function updateOrganizationName(name: string) {
 }
 
 export async function getTheme() {
+  if (isDemoMode()) return "light";
   return await getSystemSetting("theme", "light");
 }
 
@@ -77,6 +79,7 @@ export async function updateTheme(theme: "light" | "dark") {
 }
 
 export async function getDefaultPingInterval() {
+  if (isDemoMode()) return 60;
   const val = await getSystemSetting("defaultPingInterval", "60");
   return parseInt(val, 10);
 }
@@ -264,6 +267,9 @@ export async function fetchMonitorStatus(monitorId: string) {
     return {
       success: true,
       data: [{ 
+        id: "demo-endpoint",
+        name: "Demo Monitor",
+        type: "http",
         status: 'running', 
         latency: Math.floor(Math.random() * 50) + 10,
         lastCheck: new Date().toISOString()
@@ -304,6 +310,12 @@ export async function fetchMonitorStatus(monitorId: string) {
 }
 
 export async function getMonitorUptimeStats(monitorId: string) {
+  if (isDemoMode()) {
+    return {
+      uptime24h: 100,
+      uptime30d: 99.98
+    };
+  }
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -347,6 +359,9 @@ export async function getMonitorHistory(monitorId: string, limit = 50) {
         history.push({
             timestamp: time,
             data: [{ 
+                id: "demo-endpoint",
+                name: "Demo Monitor",
+                type: "http",
                 status: 'running', 
                 latency: Math.floor(Math.random() * 50) + 10,
                 lastCheck: time.toISOString()

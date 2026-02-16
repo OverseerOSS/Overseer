@@ -58,6 +58,9 @@ export const MOCK_METRICS = MOCK_MONITORS.map(m => ({
   monitorId: m.id,
   timestamp: new Date(),
   data: JSON.stringify([{ 
+    id: "endpoint-1",
+    name: m.name,
+    type: m.type.toLowerCase(),
     status: 'running', 
     latency: Math.floor(Math.random() * 100) + 20,
     lastCheck: new Date().toISOString()

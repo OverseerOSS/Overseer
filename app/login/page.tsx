@@ -5,6 +5,11 @@ import LoginForm from "./login-form";
 
 export default async function LoginPage() {
   const isDemo = isDemoMode();
+  
+  if (isDemo) {
+    return <LoginForm isDemo={true} />;
+  }
+
   let userCount = 0;
   try {
     userCount = await db.user.count();
@@ -19,5 +24,5 @@ export default async function LoginPage() {
     redirect("/setup");
   }
 
-  return <LoginForm isDemo={isDemo} />;
+  return <LoginForm isDemo={false} />;
 }

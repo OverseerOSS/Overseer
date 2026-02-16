@@ -40,12 +40,12 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
         }
 
         // Transform services into display items
-        return services.map((s: any) => {
+        return services.map((s: any, idx: number) => {
           // Use monitor name as the primary display name for standard monitors
           const displayName = monitor.name || s.name;
           
           return {
-            id: `${monitor.id}-${s.id}`,
+            id: `${monitor.id}-${s.id || idx}`,
             monitorId: monitor.id,
             type: monitor.type,
             serviceId: s.id,
