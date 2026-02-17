@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { login } from "../actions";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage({ isDemo }: { isDemo?: boolean }) {
-  const [username, setUsername] = useState(isDemo ? "demo" : "admin");
-  const [password, setPassword] = useState(isDemo ? "demo" : "");
+export default function LoginPage() {
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -48,14 +48,6 @@ export default function LoginPage({ isDemo }: { isDemo?: boolean }) {
             AUTHENTICATION REQUIRED
           </p>
         </div>
-
-        {isDemo && (
-          <div className="border-2 border-black dark:border-white p-3 bg-yellow-400 dark:bg-yellow-500 text-black font-bold text-[10px] uppercase tracking-widest text-center">
-            Demo Mode Enabled
-            <br />
-            Login with demo / demo
-          </div>
-        )}
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">

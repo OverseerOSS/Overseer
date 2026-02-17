@@ -4,6 +4,10 @@ import { decrypt } from "@/lib/session";
 
 export default async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+
+  if (process.env.DEMO === "true") {
+    return NextResponse.next();
+  }
   
   // Define public paths that do not require authentication
   const isPublicPath = 

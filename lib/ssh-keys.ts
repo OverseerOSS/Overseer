@@ -128,3 +128,69 @@ export function decryptPrivateKey(encryptedJson: string): string {
 
   return decrypted;
 }
+/**
+ * Generate SSH key fingerprint (MD5 hash of the public key)
+ * Used for key identification/verification
+ */
+export function generateFingerprint(publicKeyOpenSSH: string): string {
+  // Extract the base64 part from "ssh-rsa AAAA.../..."
+  const parts = publicKeyOpenSSH.split(" ");
+  if (parts.length < 2) {
+    throw new Error("Invalid public key format");
+  }
+  const base64Key = parts[1];
+  const keyBuffer = Buffer.from(base64Key, "base64");
+  const hash = crypto.createHash("md5").update(keyBuffer).digest("hex");
+  
+  // Format as SSH fingerprint: xx:xx:xx:...
+  return hash.match(/.{1,2}/g)?.join(":") || hash;
+}
+
+/**
+ * Generate a bash setup command for SSH monitoring
+ * Returns a command that users can paste into their terminal to authorize the public key
+ */
+export function generateSshSetupCommand(
+  publicKey: string,
+  ip: string,
+  username: string,
+  port: number = 22
+): string {
+  const sshCommand = port === 22 
+    ? `ssh ${username}@${ip}`
+    : `ssh -p ${port} ${username}@${ip}`;
+
+  const setupScript = `#!/bin/bash
+# Overseer SSH Monitoring Setup
+# This script adds the Overseer public key to authorized_keys
+
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Add the public key
+echo '${publicKey}' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+echo "✓ Overseer SSH monitoring authorized"`;
+
+  return setupScript;
+}
+
+/**
+ * Generate a one-liner setup command for quick copying
+ */
+export function generateSshOneLiner(
+  publicKey: string,
+  ip: string,
+  username: string,
+  port: number = 22
+): string {
+  const sshCommand = port === 22 
+    ? `ssh ${username}@${ip}`
+    : `ssh -p ${port} ${username}@${ip}`;
+
+  // Escape single quotes in the public key for shell
+  const escapedKey = publicKey.replace(/'/g, "'\\''");
+
+  return `${sshCommand} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '"'"'${escapedKey}'"'"' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo "✓ Overseer monitoring authorized"'`;
+}

@@ -30,6 +30,17 @@ model ServiceMonitor {
   metrics     Metric[]
   statusPages StatusPage[]
   notificationChannels NotificationChannel[]
+  sshKey      SshKey?
+}
+
+model SshKey {
+  id              String @id @default(cuid())
+  monitorId       String @unique
+  monitor         ServiceMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  publicKey       String // OpenSSH format public key
+  encryptedPrivateKey String // Encrypted PEM format private key
+  fingerprint     String // SSH key fingerprint for display
+  createdAt       DateTime @default(now())
 }
 
 model Metric {

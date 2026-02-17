@@ -7,7 +7,7 @@ export default async function LoginPage() {
   const isDemo = isDemoMode();
   
   if (isDemo) {
-    return <LoginForm isDemo={true} />;
+    redirect("/");
   }
 
   let userCount = 0;
@@ -24,5 +24,5 @@ export default async function LoginPage() {
     redirect("/setup");
   }
 
-  return <LoginForm isDemo={false} />;
+  return <LoginForm />;
 }

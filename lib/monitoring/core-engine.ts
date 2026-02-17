@@ -48,11 +48,13 @@ export async function getAvailableMonitorTypes(): Promise<MonitorMetadata[]> {
         name: "SSH Server",
         description: "Monitor remote Linux server metrics (CPU, RAM, Disk) via SSH.",
         configSchema: [
-          { key: "host", label: "Hostname / IP", type: "text", required: true, placeholder: "1.2.3.4" },        { key: "alias", label: "Display Alias", type: "text", placeholder: "Friendly name for this server" },          { key: "port", label: "Port", type: "number", defaultValue: 22 },
+          { key: "host", label: "Hostname / IP", type: "text", required: true, placeholder: "1.2.3.4" },
+          { key: "alias", label: "Display Alias", type: "text", placeholder: "Friendly name for this server" },
+          { key: "port", label: "Port", type: "number", defaultValue: 22 },
           { key: "username", label: "Username", type: "text", required: true, defaultValue: "root" },
-          { key: "authMethod", label: "Auth Method", type: "select", options: ["password", "key"], defaultValue: "password" },
-          { key: "password", label: "Password", type: "password" },
-          { key: "privateKey", label: "Private Key (PEM)", type: "textarea" },
+          { key: "authMethod", label: "Auth Method", type: "select", options: ["password", "key"], defaultValue: "key" },
+          { key: "password", label: "Password (if using password auth)", type: "password" },
+          { key: "privateKey", label: "Private Key (PEM, if using key auth)", type: "textarea" },
           { key: "interval", label: "Poll Interval (s)", type: "number", placeholder: "Default from settings" }
         ]
       }

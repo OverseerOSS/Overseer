@@ -5,6 +5,7 @@ import { fetchCoreStatus, getAvailableMonitorTypes } from "@/lib/monitoring/core
 import { db } from "@/lib/db";
 import { createSession, deleteSession } from "@/lib/session";
 import { getSystemSetting, setSystemSetting, isDemoMode } from "@/lib/settings";
+import { generateKeyPair, encryptPrivateKey, generateFingerprint, generateSshSetupCommand, generateSshOneLiner } from "@/lib/ssh-keys";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
@@ -151,10 +152,6 @@ export async function probeMonitor(url: string) {
 }
 
 export async function login(username: string, password: string) {
-  if (isDemoMode() && username === "demo" && password === "demo") {
-    await createSession("demo-user", "demo");
-    return { success: true };
-  }
   try {
     const user = await db.user.findUnique({ where: { username } });
     if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -256,6 +253,69 @@ export async function deleteServiceMonitor(id: string) {
     return { success: true };
   } catch (error) {
     return { success: false, error: "Failed to delete monitor" };
+  }
+}
+
+export async function generateSshSetup(
+  name: string,
+  host: string,
+  username: string,
+  port: number = 22
+) {
+  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  try {
+    const defaultInterval = await getDefaultPingInterval();
+
+    // Generate SSH key pair
+    const { publicKey, privateKey } = generateKeyPair();
+    const fingerprint = generateFingerprint(publicKey);
+    const encryptedPrivateKey = encryptPrivateKey(privateKey);
+
+    // Create the monitor with SSH type
+    const monitor = await db.serviceMonitor.create({
+      data: {
+        type: "ssh",
+        name,
+        config: JSON.stringify({
+          host,
+          username,
+          port,
+          authMethod: "key",
+          alias: name,
+          interval: defaultInterval
+        }),
+        interval: defaultInterval
+      },
+    });
+
+    // Create the SSH key record
+    const sshKey = await db.sshKey.create({
+      data: {
+        monitorId: monitor.id,
+        publicKey,
+        encryptedPrivateKey,
+        fingerprint,
+      },
+    });
+
+    // Generate setup commands
+    const scriptCommand = generateSshSetupCommand(publicKey, host, username, port);
+    const oneLiner = generateSshOneLiner(publicKey, host, username, port);
+
+    revalidatePath("/");
+    return {
+      success: true,
+      monitor,
+      setupData: {
+        fingerprint,
+        scriptCommand,
+        oneLiner,
+        publicKey,
+        monitorId: monitor.id
+      }
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message || "Failed to generate SSH setup" };
   }
 }
 
