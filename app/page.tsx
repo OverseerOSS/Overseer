@@ -22,7 +22,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
 import { Plus, X, Zap, Bell } from "lucide-react";
 import Link from "next/link";
-import { getDemoMonitors, saveDemoMonitors, getDemoOrgName, saveDemoOrgName } from "@/lib/demo-client";
+import { getDemoMonitors, saveDemoMonitors, getDemoOrgName, saveDemoOrgName, fetchDemoMonitorStatus } from "@/lib/demo-client";
 
 interface Monitor {
   id: string;
@@ -160,6 +160,40 @@ function DashboardContent() {
 
     let isSubscribed = true;
 
+    if (isDemo) {
+      const selected = monitors.find(m => m.id === selectedMonitorId);
+      if (!selected) {
+        setMonitorData(null);
+        setHistoryData([]);
+        return;
+      }
+
+      const runDemoCheck = async () => {
+        try {
+          const data = await fetchDemoMonitorStatus(selected);
+          if (!isSubscribed) return;
+          setMonitorData(data);
+          setHistoryData(prev => {
+            const point = {
+              timestamp: new Date().toISOString(),
+              data
+            };
+            return [...prev, point].slice(-100);
+          });
+        } catch {
+          // Keep UI responsive in demo mode even if a fetch fails.
+        }
+      };
+
+      runDemoCheck();
+      const timer = setInterval(runDemoCheck, 5000);
+
+      return () => {
+        isSubscribed = false;
+        clearInterval(timer);
+      };
+    }
+
     getMonitorUptimeStats(selectedMonitorId).then(stats => {
       if (isSubscribed) setUptimeStats(stats);
     });
@@ -203,7 +237,7 @@ function DashboardContent() {
       eventSource.removeEventListener('update', handleUpdate as any);
       eventSource.close();
     };
-  }, [selectedMonitorId]);
+  }, [selectedMonitorId, isDemo, monitors]);
 
   const handleAddMonitor = async (e: React.FormEvent) => {
     e.preventDefault();

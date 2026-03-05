@@ -147,7 +147,8 @@ async function fetchHttpStatus(config: any): Promise<ServiceInfo[]> {
     clearTimeout(timeoutId);
     const latency = Date.now() - start;
 
-    const isOperational = response.status === Number(expectedStatus);
+    const normalizedExpectedStatus = Number(expectedStatus);
+    const isOperational = response.status === normalizedExpectedStatus;
 
     return [{
       id: "endpoint",
@@ -163,6 +164,7 @@ async function fetchHttpStatus(config: any): Promise<ServiceInfo[]> {
         method,
         latency: `${latency}ms`,
         statusCode: response.status,
+        expectedStatus: normalizedExpectedStatus,
         statusText: response.statusText,
         checkTime: new Date().toISOString(),
         sslExp: sslInfo.expiresAt,

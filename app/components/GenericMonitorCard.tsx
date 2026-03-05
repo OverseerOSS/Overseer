@@ -32,6 +32,21 @@ export function GenericMonitorCard({
   const sslColor = sslDays === undefined || sslDays === null ? "black" : sslDays < 7 ? "red" : sslDays < 30 ? "yellow" : "green";
 
   const isSsh = service.type === 'ssh';
+  const actualHttpStatus = service.details?.statusCode ?? service.metrics?.status;
+  const expectedHttpStatus = service.details?.expectedStatus;
+  const httpStatusSummary = actualHttpStatus
+    ? expectedHttpStatus !== undefined
+      ? `${actualHttpStatus}/${expectedHttpStatus}`
+      : `${actualHttpStatus}`
+    : "--";
+
+  const httpStatusColor = !actualHttpStatus
+    ? "black"
+    : expectedHttpStatus !== undefined && Number(actualHttpStatus) !== Number(expectedHttpStatus)
+      ? "red"
+      : service.status === 'running'
+        ? "green"
+        : "yellow";
 
   return (
     <div className="space-y-6">
@@ -68,13 +83,14 @@ export function GenericMonitorCard({
               color={service.status === 'running' ? 'green' : 'red'}
             />
             <MetricCard 
-              label="Uptime (24h)" 
-              value={uptimeStats ? `${uptimeStats.uptime24h.toFixed(2)}%` : "--"} 
-              color="green"
+              label="HTTP Status"
+              value={httpStatusSummary}
+              subValue={expectedHttpStatus !== undefined ? 'actual/expected' : undefined}
+              color={httpStatusColor}
             />
             <MetricCard 
-              label="Uptime (30d)" 
-              value={uptimeStats ? `${uptimeStats.uptime30d.toFixed(2)}%` : "--"} 
+              label="Uptime (24h)" 
+              value={uptimeStats ? `${uptimeStats.uptime24h.toFixed(2)}%` : "--"} 
               color="green"
             />
             <MetricCard 
@@ -183,7 +199,7 @@ export function GenericMonitorCard({
                       </td>
                       <td className="px-6 py-4 opacity-50 dark:text-white">{new Date(h.timestamp).toLocaleString()}</td>
                       <td className="px-6 py-4 dark:text-white">{h.data.metrics?.latency || '--'}ms</td>
-                      <td className="px-6 py-4 truncate max-w-[200px] dark:text-white">{h.data.details?.statusText || h.data.details?.error || 'OK'}</td>
+                      <td className="px-6 py-4 truncate max-w-[200px] dark:text-white">{h.data.details?.statusCode ? `${h.data.details.statusCode}${h.data.details?.statusText ? ` ${h.data.details.statusText}` : ''}` : h.data.details?.error || 'OK'}</td>
                     </tr>
                   ))}
                 </tbody>
