@@ -1,5 +1,5 @@
 # Overseer
-
+*on the go note to flavor town reviewer! this project works, the demo your provided with is in a demo mode, this meens it uses mockup data, you can still remove and amke new monitors, hope this clears up confusion*
 A powerful, extensible infrastructure monitoring platform built with Next.js. Monitor servers, databases, APIs, containers, and more through a unified dashboard.
 
 ## Features
