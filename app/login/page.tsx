@@ -10,6 +10,10 @@ export default async function LoginPage() {
     redirect("/");
   }
 
+  if (!process.env.DATABASE_URL) {
+    redirect("/setup");
+  }
+
   let userCount = 0;
   try {
     userCount = await db.user.count();
@@ -17,7 +21,10 @@ export default async function LoginPage() {
     if (e.code === 'P2021') { // Table does not exist
       redirect("/setup");
     }
-    throw e;
+    if (typeof e?.message === "string" && e.message.includes("DATABASE_URL")) {
+      redirect("/setup");
+    }
+    redirect("/setup");
   }
 
   if (userCount === 0) {

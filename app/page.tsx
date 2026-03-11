@@ -275,7 +275,7 @@ function DashboardContent() {
   );
 
   return (
-    <div className="flex h-screen bg-white dark:bg-[#0a0a0a] transition-colors duration-300 [zoom:90%]">
+    <div className="flex h-screen overflow-x-hidden bg-white dark:bg-[#0a0a0a] transition-colors duration-300">
       <Sidebar
         monitors={monitors}
         orgName={orgName}
