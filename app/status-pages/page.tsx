@@ -13,7 +13,6 @@ import {
 } from "../actions";
 import { Sidebar } from "../components/Sidebar";
 import { ThemeSync } from "../components/ThemeSync";
-import { getDemoMonitors, getDemoStatusPages, saveDemoStatusPages } from "@/lib/demo-client";
 import { 
   Settings, 
   Plus, 
@@ -58,20 +57,14 @@ function StatusPagesContent() {
         const demoMode = await getIsDemoMode();
         setIsDemo(demoMode);
 
-        if (demoMode) {
-          setStatusPages(getDemoStatusPages());
-          setMonitors(getDemoMonitors());
-          setTheme(await getTheme());
-        } else {
-          const [pages, mons, currentTheme] = await Promise.all([
-            getStatusPages(),
-            getServiceMonitors(),
-            getTheme()
-          ]);
-          setStatusPages(pages);
-          setMonitors(mons);
-          setTheme(currentTheme);
-        }
+        const [pages, mons, currentTheme] = await Promise.all([
+          getStatusPages(),
+          getServiceMonitors(),
+          getTheme()
+        ]);
+        setStatusPages(pages);
+        setMonitors(mons);
+        setTheme(currentTheme);
       } catch (err) {
         console.error("Failed to load status pages:", err);
       } finally {
@@ -101,27 +94,14 @@ function StatusPagesContent() {
   const handleSave = async (data: any) => {
     setIsSaving(true);
     try {
-      if (isDemo) {
-        let updated;
-        if (data.id) {
-          updated = statusPages.map(p => p.id === data.id ? { ...p, ...data } : p);
-        } else {
-          const newDoc = { ...data, id: 'demo-sp-' + Math.random().toString(36).substr(2, 9) };
-          updated = [...statusPages, newDoc];
-        }
-        setStatusPages(updated);
-        saveDemoStatusPages(updated);
-        setSelectedPage(null);
+      if (data.id) {
+        await updateStatusPage(data.id, data);
       } else {
-        if (data.id) {
-          await updateStatusPage(data.id, data);
-        } else {
-          await createStatusPage(data);
-        }
-        const updatedPages = await getStatusPages();
-        setStatusPages(updatedPages);
-        setSelectedPage(null);
+        await createStatusPage(data);
       }
+      const updatedPages = await getStatusPages();
+      setStatusPages(updatedPages);
+      setSelectedPage(null);
     } catch (err) {
       console.error("Failed to save status page:", err);
     } finally {
@@ -132,16 +112,9 @@ function StatusPagesContent() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this status page?")) return;
     try {
-      if (isDemo) {
-        const updated = statusPages.filter(p => p.id !== id);
-        setStatusPages(updated);
-        saveDemoStatusPages(updated);
-        setSelectedPage(null);
-      } else {
-        await deleteStatusPage(id);
-        setStatusPages(statusPages.filter(p => p.id !== id));
-        setSelectedPage(null);
-      }
+      await deleteStatusPage(id);
+      setStatusPages(statusPages.filter(p => p.id !== id));
+      setSelectedPage(null);
     } catch (err) {
       console.error("Failed to delete status page:", err);
     }

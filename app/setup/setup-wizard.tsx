@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createAdminUser, runMigration } from "./actions";
-import { getIsDemoMode } from "../actions";
+import { getIsDemoMode, updateOrganizationName } from "../actions";
 import { ArrowRight, CheckCircle, Database, Shield, Server, Loader2 } from "lucide-react";
-import { saveDemoOrgName } from "@/lib/demo-client";
 
 type SetupStep = "welcome" | "migration" | "account" | "finish";
 
@@ -72,7 +71,7 @@ export default function SetupPage() {
     setIsLoading(true);
     try {
       if (isDemo) {
-        saveDemoOrgName(orgName || "Overseer Demo");
+        await updateOrganizationName(orgName || "Overseer Demo");
         setStep("finish");
       } else {
         const result = await createAdminUser(username, password, orgName);

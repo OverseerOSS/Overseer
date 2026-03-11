@@ -26,8 +26,8 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
         ]);
         
         let services: any[] = [];
-        if (statusResult.success && statusResult.data) {
-           services = statusResult.data;
+        if (statusResult.success && "data" in statusResult && Array.isArray(statusResult.data)) {
+          services = statusResult.data;
         }
 
         // Apply filtering from config if it exists

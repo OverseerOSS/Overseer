@@ -22,7 +22,6 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
 import { Plus, X, Zap, Bell } from "lucide-react";
 import Link from "next/link";
-import { getDemoMonitors, saveDemoMonitors, getDemoOrgName, saveDemoOrgName, fetchDemoMonitorStatus } from "@/lib/demo-client";
 
 interface Monitor {
   id: string;
@@ -128,22 +127,13 @@ function DashboardContent() {
         setMonitorTypes(data.monitorTypes);
         setNotificationChannels(data.notificationChannels);
 
-        if (demoMode) {
-          const mons = getDemoMonitors();
-          setMonitors(mons as any);
-          setOrgName(getDemoOrgName());
-          if (mons.length > 0 && !selectedMonitorId) {
-            setSelectedMonitorId(mons[0].id);
+        if (data.monitors) {
+          setMonitors(data.monitors as any);
+          if (data.monitors.length > 0 && !selectedMonitorId) {
+            setSelectedMonitorId(data.monitors[0].id);
           }
-        } else {
-          if (data.monitors) {
-            setMonitors(data.monitors as any);
-            if (data.monitors.length > 0 && !selectedMonitorId) {
-              setSelectedMonitorId(data.monitors[0].id);
-            }
-          }
-          setOrgName(data.orgName);
         }
+        setOrgName(data.orgName);
     } catch (err) { 
       console.error(err); 
     }
@@ -159,40 +149,6 @@ function DashboardContent() {
     }
 
     let isSubscribed = true;
-
-    if (isDemo) {
-      const selected = monitors.find(m => m.id === selectedMonitorId);
-      if (!selected) {
-        setMonitorData(null);
-        setHistoryData([]);
-        return;
-      }
-
-      const runDemoCheck = async () => {
-        try {
-          const data = await fetchDemoMonitorStatus(selected);
-          if (!isSubscribed) return;
-          setMonitorData(data);
-          setHistoryData(prev => {
-            const point = {
-              timestamp: new Date().toISOString(),
-              data
-            };
-            return [...prev, point].slice(-100);
-          });
-        } catch {
-          // Keep UI responsive in demo mode even if a fetch fails.
-        }
-      };
-
-      runDemoCheck();
-      const timer = setInterval(runDemoCheck, 5000);
-
-      return () => {
-        isSubscribed = false;
-        clearInterval(timer);
-      };
-    }
 
     getMonitorUptimeStats(selectedMonitorId).then(stats => {
       if (isSubscribed) setUptimeStats(stats);
@@ -259,42 +215,14 @@ function DashboardContent() {
     }
 
     let result;
-    if (isDemo) {
-      if (editingMonitorId) {
-        setMonitors(prev => {
-          const updated = prev.map(m => m.id === editingMonitorId ? { ...m, name: newMonitorName, config: JSON.stringify(finalConfig), url: finalConfig.url || null, method: finalConfig.method || "GET" } : m);
-          saveDemoMonitors(updated);
-          return updated;
-        });
-        result = { success: true };
-      } else {
-        const newMon = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: newMonitorName,
-          type: selectedTypeId,
-          config: JSON.stringify(finalConfig),
-          url: finalConfig.url || null,
-          method: finalConfig.method || "GET",
-          interval: 60
-        };
-        setMonitors(prev => {
-          const updated = [...prev, newMon];
-          saveDemoMonitors(updated);
-          return updated;
-        });
-        if (!selectedMonitorId) setSelectedMonitorId(newMon.id);
-        result = { success: true, monitor: newMon };
-      }
+    if (editingMonitorId) {
+      result = await updateServiceMonitor(editingMonitorId, newMonitorName, finalConfig);
     } else {
-      if (editingMonitorId) {
-        result = await updateServiceMonitor(editingMonitorId, newMonitorName, finalConfig);
-      } else {
-        result = await addServiceMonitor(selectedTypeId, newMonitorName, finalConfig);
-      }
-      
-      if (result.success && result.monitor) {
-        await updateMonitorNotificationChannels(result.monitor.id, selectedChannelIds);
-      }
+      result = await addServiceMonitor(selectedTypeId, newMonitorName, finalConfig);
+    }
+
+    if (result.success && result.monitor && !isDemo) {
+      await updateMonitorNotificationChannels(result.monitor.id, selectedChannelIds);
     }
 
     setIsSubmitting(false);
@@ -307,9 +235,10 @@ function DashboardContent() {
       setSelectedTypeId("");
       setSelectedChannelIds([]);
       setError("");
-      if (!isDemo) {
-        const monitorsList = await getServiceMonitors();
-        setMonitors(monitorsList as any);
+      const monitorsList = await getServiceMonitors();
+      setMonitors(monitorsList as any);
+      if (!selectedMonitorId && monitorsList.length > 0) {
+        setSelectedMonitorId(monitorsList[0].id);
       }
     } else {
       setError(result.error || "Failed to save monitor");
@@ -317,18 +246,6 @@ function DashboardContent() {
   };
 
   const handleDelete = async (id: string) => {
-    if (isDemo) {
-      setMonitors(prev => {
-        const updated = prev.filter(m => m.id !== id);
-        saveDemoMonitors(updated);
-        if (selectedMonitorId === id) {
-          setSelectedMonitorId(updated[0]?.id || null);
-        }
-        return updated;
-      });
-      setDeleteTargetId(null);
-      return;
-    }
     const result = await deleteServiceMonitor(id);
     if (result.success) {
       setDeleteTargetId(null);

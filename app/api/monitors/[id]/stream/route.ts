@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ServiceInfo } from "@/lib/monitoring/types";
 import { fetchCoreStatus } from "@/lib/monitoring/core-engine";
+import { checkDemoMonitorNow, getDemoMonitorById } from "@/lib/demo-store";
 import { isDemoMode } from "@/lib/settings";
 
 // Disable caching for SSE
@@ -13,21 +14,8 @@ const STREAM_INTERVAL = 1000;
 // Fetch monitor status (similar to fetchCoreStatus action but without rate limiting)
 async function fetchMonitorData(monitorId: string): Promise<{ success: boolean; data?: ServiceInfo[]; error?: string }> {
   if (isDemoMode()) {
-    return {
-      success: true,
-      data: [{
-        id: "demo-endpoint",
-        name: "Demo Monitor",
-        type: "http",
-        status: 'running' as const,
-        metrics: {
-          latency: Math.floor(Math.random() * 50) + 10
-        },
-        details: {
-          lastCheck: new Date().toISOString()
-        }
-      }]
-    };
+    const result = await checkDemoMonitorNow(monitorId);
+    return { success: result.success, data: result.data, error: result.error };
   }
   const monitor = await db.serviceMonitor.findUnique({
     where: { id: monitorId },
@@ -71,7 +59,12 @@ export async function GET(
   const { id: monitorId } = await params;
 
   // Verify monitor exists (skip for demo mode)
-  if (!isDemoMode()) {
+  if (isDemoMode()) {
+    const monitor = getDemoMonitorById(monitorId);
+    if (!monitor) {
+      return new Response("Monitor not found", { status: 404 });
+    }
+  } else {
     const monitor = await db.serviceMonitor.findUnique({
       where: { id: monitorId },
     }).catch(() => null);

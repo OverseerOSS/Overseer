@@ -15,7 +15,6 @@ import {
 import { Sidebar } from "../components/Sidebar";
 import { NotificationsSettings } from "../components/NotificationsSettings";
 import { Save, Settings, Moon, Sun, Sliders, Bell } from "lucide-react";
-import { getDemoMonitors, getDemoOrgName, saveDemoOrgName } from "@/lib/demo-client";
 
 export default function SettingsPage() {
     return (
@@ -38,24 +37,17 @@ function SettingsContent() {
     // Load initial data
     getIsDemoMode().then(demoMode => {
       setIsDemo(demoMode);
-      if (demoMode) {
-        setOrgName(getDemoOrgName());
-        setTheme("light");
-        setMonitors(getDemoMonitors());
-        setDefaultPingInterval(60);
-      } else {
-        Promise.all([
-            getOrganizationName(), 
-            getTheme(),
-            getServiceMonitors(),
-            getDefaultPingInterval()
-        ]).then(([name, currentTheme, mons, interval]) => {
-            setOrgName(name);
-            setTheme(currentTheme as "light" | "dark");
-            setMonitors(mons);
-            setDefaultPingInterval(interval);
-        });
-      }
+      Promise.all([
+          getOrganizationName(), 
+          getTheme(),
+          getServiceMonitors(),
+          getDefaultPingInterval()
+      ]).then(([name, currentTheme, mons, interval]) => {
+          setOrgName(name);
+          setTheme(currentTheme as "light" | "dark");
+          setMonitors(mons);
+          setDefaultPingInterval(interval);
+      });
     });
   }, []);
 
@@ -75,15 +67,11 @@ function SettingsContent() {
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    if (isDemo) {
-      saveDemoOrgName(orgName);
-    } else {
-      await Promise.all([
-          updateOrganizationName(orgName),
-          updateTheme(theme),
-          updateDefaultPingInterval(defaultPingInterval)
-      ]);
-    }
+    await Promise.all([
+        updateOrganizationName(orgName),
+        updateTheme(theme),
+        updateDefaultPingInterval(defaultPingInterval)
+    ]);
     setIsSaving(false);
   };
 

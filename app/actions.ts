@@ -6,15 +6,36 @@ import { db } from "@/lib/db";
 import { createSession, deleteSession } from "@/lib/session";
 import { getSystemSetting, setSystemSetting, isDemoMode } from "@/lib/settings";
 import { generateKeyPair, encryptPrivateKey, generateFingerprint, generateSshSetupCommand, generateSshOneLiner } from "@/lib/ssh-keys";
+import {
+  addDemoMonitor,
+  checkDemoMonitorNow,
+  createDemoStatusPage,
+  deleteDemoMonitor,
+  deleteDemoStatusPage,
+  getDemoDefaultPingInterval,
+  getDemoMonitorHistory,
+  getDemoMonitorUptimeHistory,
+  getDemoMonitorUptimeStats,
+  getDemoMonitors,
+  getDemoOrgName,
+  getDemoStatusPageBySlug,
+  getDemoStatusPages,
+  getDemoTheme,
+  setDemoDefaultPingInterval,
+  setDemoOrgName,
+  setDemoTheme,
+  updateDemoMonitor,
+  updateDemoStatusPage,
+} from "@/lib/demo-store";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
 export async function getDashboardData() {
   if (isDemoMode()) {
     return {
-      monitors: [], // Client will load from demo-client
+      monitors: getDemoMonitors(),
       monitorTypes: await getAvailableMonitorTypes(),
-      orgName: "Overseer Demo",
+      orgName: getDemoOrgName(),
       notificationChannels: []
     };
   }
@@ -48,12 +69,16 @@ export async function getIsDemoMode() {
 }
 
 export async function getOrganizationName() {
-  if (isDemoMode()) return "Overseer Demo";
+  if (isDemoMode()) return getDemoOrgName();
   return await getSystemSetting("orgName", "Overseer");
 }
 
 export async function updateOrganizationName(name: string) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    setDemoOrgName(name);
+    revalidatePath("/");
+    return { success: true };
+  }
   try {
     await setSystemSetting("orgName", name);
     revalidatePath("/");
@@ -64,12 +89,16 @@ export async function updateOrganizationName(name: string) {
 }
 
 export async function getTheme() {
-  if (isDemoMode()) return "light";
+  if (isDemoMode()) return getDemoTheme();
   return await getSystemSetting("theme", "light");
 }
 
 export async function updateTheme(theme: "light" | "dark") {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    setDemoTheme(theme);
+    revalidatePath("/", "layout");
+    return { success: true };
+  }
   try {
     await setSystemSetting("theme", theme);
     revalidatePath("/", "layout");
@@ -80,13 +109,20 @@ export async function updateTheme(theme: "light" | "dark") {
 }
 
 export async function getDefaultPingInterval() {
-  if (isDemoMode()) return 60;
+  if (isDemoMode()) return getDemoDefaultPingInterval();
   const val = await getSystemSetting("defaultPingInterval", "60");
   return parseInt(val, 10);
 }
 
 export async function updateDefaultPingInterval(interval: number) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    if (interval < 10 || interval > 60) {
+      return { success: false, error: "Interval must be between 10 and 60 seconds" };
+    }
+    setDemoDefaultPingInterval(interval);
+    revalidatePath("/settings");
+    return { success: true };
+  }
   try {
     if (interval < 10 || interval > 60) {
       return { success: false, error: "Interval must be between 10 and 60 seconds" };
@@ -194,13 +230,29 @@ export async function logout() {
 }
 
 export async function getServiceMonitors() {
+  if (isDemoMode()) return getDemoMonitors();
   return await db.serviceMonitor.findMany({
     orderBy: { order: "asc" },
   });
 }
 
 export async function addServiceMonitor(type: string, name: string, config: Record<string, any>) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const defaultInterval = getDemoDefaultPingInterval();
+    const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
+    const monitor = addDemoMonitor({
+      type,
+      name,
+      config,
+      url: config.url || null,
+      method: config.method || "GET",
+      interval,
+    });
+    revalidatePath("/");
+    revalidatePath("/status-pages");
+    revalidatePath("/s/public");
+    return { success: true, monitor };
+  }
   try {
     const defaultInterval = await getDefaultPingInterval();
     const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
@@ -223,7 +275,21 @@ export async function addServiceMonitor(type: string, name: string, config: Reco
 }
 
 export async function updateServiceMonitor(id: string, name: string, config: Record<string, any>) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const defaultInterval = getDemoDefaultPingInterval();
+    const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
+    const monitor = updateDemoMonitor(id, {
+      name,
+      config,
+      url: config.url || null,
+      method: config.method || "GET",
+      interval,
+    });
+    if (!monitor) return { success: false, error: "Monitor not found" };
+    revalidatePath("/");
+    revalidatePath("/status-pages");
+    return { success: true, monitor };
+  }
   try {
     const defaultInterval = await getDefaultPingInterval();
     const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
@@ -246,7 +312,14 @@ export async function updateServiceMonitor(id: string, name: string, config: Rec
 }
 
 export async function deleteServiceMonitor(id: string) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const deleted = deleteDemoMonitor(id);
+    if (!deleted) return { success: false, error: "Monitor not found" };
+    revalidatePath("/");
+    revalidatePath("/status-pages");
+    revalidatePath("/s/public");
+    return { success: true };
+  }
   try {
     await db.serviceMonitor.delete({ where: { id } });
     revalidatePath("/");
@@ -324,22 +397,7 @@ const RATE_LIMIT_MS = 2000;
 
 export async function fetchMonitorStatus(monitorId: string) {
   if (isDemoMode()) {
-    return {
-      success: true,
-      data: [{ 
-        id: "demo-endpoint",
-        name: "Demo Monitor",
-        type: "http",
-        status: 'running' as const, 
-        metrics: {
-          latency: Math.floor(Math.random() * 50) + 10
-        },
-        details: {
-          lastCheck: new Date().toISOString()
-        }
-      }],
-      monitorName: "Demo Monitor"
-    };
+    return await checkDemoMonitorNow(monitorId);
   }
   const now = Date.now();
   const lastFetch = lastFetchTimes.get(monitorId) || 0;
@@ -375,10 +433,7 @@ export async function fetchMonitorStatus(monitorId: string) {
 
 export async function getMonitorUptimeStats(monitorId: string) {
   if (isDemoMode()) {
-    return {
-      uptime24h: 100,
-      uptime30d: 99.98
-    };
+    return getDemoMonitorUptimeStats(monitorId);
   }
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -415,28 +470,7 @@ export async function getMonitorUptimeStats(monitorId: string) {
 
 export async function getMonitorHistory(monitorId: string, limit = 50) {
   if (isDemoMode()) {
-    // Return empty history or mock history for demo
-    const history = [];
-    const now = new Date();
-    for (let i = 0; i < limit; i++) {
-        const time = new Date(now.getTime() - i * 60000);
-        history.push({
-            timestamp: time,
-            data: [{ 
-                id: "demo-endpoint",
-                name: "Demo Monitor",
-                type: "http",
-                status: 'running' as const, 
-                metrics: {
-                  latency: Math.floor(Math.random() * 50) + 10
-                },
-                details: {
-                  lastCheck: time.toISOString()
-                }
-            }]
-        });
-    }
-    return history.reverse();
+    return getDemoMonitorHistory(monitorId, limit);
   }
   try {
     const metrics = await db.metric.findMany({
@@ -455,17 +489,7 @@ export async function getMonitorHistory(monitorId: string, limit = 50) {
 
 export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
   if (isDemoMode()) {
-    const history = [];
-    const now = new Date();
-    for (let i = 0; i < days; i++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        history.push({ 
-            date: date.toISOString().split('T')[0], 
-            status: 'operational' 
-        });
-    }
-    return history.reverse();
+    return getDemoMonitorUptimeHistory(monitorId, days);
   }
   const history = [];
   const now = new Date();
@@ -511,28 +535,7 @@ export async function getMonitorUptimeHistory(monitorId: string, days = 30) {
 
 export async function getStatusPages() {
   if (isDemoMode()) {
-    return [
-      {
-        id: "demo-sp",
-        title: "Public Status",
-        slug: "public",
-        name: "Public Status",
-        description: "Demo status page",
-        showMetrics: true,
-        showHistory: true,
-        showBanner: true,
-        showRecentHistory: true,
-        showCpu: true,
-        showRam: true,
-        showNetwork: true,
-        config: {} as any,
-        monitorIds: ["demo-1", "demo-2"],
-        monitors: [
-            { id: "demo-1", name: "Main Website", type: "HTTP" },
-            { id: "demo-2", name: "API Gateway", type: "HTTP" }
-        ]
-      }
-    ];
+    return getDemoStatusPages();
   }
   const pages = await db.statusPage.findMany({
     include: { monitors: true },
@@ -546,24 +549,7 @@ export async function getStatusPages() {
 
 export async function getStatusPageBySlug(slug: string) {
   if (isDemoMode()) {
-    return {
-      id: "demo-sp",
-      title: "Public Status",
-      slug: slug,
-      description: "Demo status page",
-      showMetrics: true,
-      showHistory: true,
-      showBanner: true,
-      showRecentHistory: true,
-      showCpu: true,
-      showRam: true,
-      showNetwork: true,
-      config: {} as any,
-      monitors: [
-        { id: "demo-1", name: "Main Website", type: "HTTP" },
-        { id: "demo-2", name: "API Gateway", type: "HTTP" }
-      ]
-    };
+    return getDemoStatusPageBySlug(slug);
   }
   return await db.statusPage.findUnique({
     where: { slug },
@@ -572,7 +558,12 @@ export async function getStatusPageBySlug(slug: string) {
 }
 
 export async function createStatusPage(data: any) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const page = createDemoStatusPage(data);
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + page.slug);
+    return { success: true, page };
+  }
   try {
     const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
     const page = await db.statusPage.create({
@@ -599,7 +590,13 @@ export async function createStatusPage(data: any) {
 }
 
 export async function updateStatusPage(id: string, data: any) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const page = updateDemoStatusPage(id, data);
+    if (!page) return { success: false, error: "Status page not found" };
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + page.slug);
+    return { success: true, page };
+  }
   try {
     const { name, slug, description, monitorIds, showMetrics, showHistory, showBanner, showRecentHistory } = data;
     // Disconnect all and reconnect new ones to sync monitorIds
@@ -637,7 +634,13 @@ export async function updateStatusPage(id: string, data: any) {
 }
 
 export async function deleteStatusPage(id: string) {
-  if (isDemoMode()) return { success: false, error: "Demo mode: Action disabled" };
+  if (isDemoMode()) {
+    const page = deleteDemoStatusPage(id);
+    if (!page) return { success: false, error: "Status page not found" };
+    revalidatePath("/status-pages");
+    revalidatePath("/s/" + page.slug);
+    return { success: true };
+  }
   try {
     const page = await db.statusPage.delete({ where: { id } });
     revalidatePath("/status-pages");
