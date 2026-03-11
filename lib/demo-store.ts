@@ -2,7 +2,6 @@ import "server-only";
 
 import { fetchCoreStatus } from "@/lib/monitoring/core-engine";
 import type { ServiceInfo } from "@/lib/monitoring/types";
-import { MOCK_STATUS_PAGES } from "@/lib/mock-data";
 
 type DemoMonitor = {
   id: string;
@@ -74,21 +73,7 @@ function clone<T>(value: T): T {
 function buildInitialState(): DemoState {
   const monitors: DemoMonitor[] = [];
 
-  const statusPages: DemoStatusPage[] = MOCK_STATUS_PAGES.map((p: any) => ({
-    id: p.id,
-    slug: p.slug,
-    title: p.title,
-    description: p.description || "Demo status page",
-    showMetrics: Boolean(p.showMetrics),
-    showCpu: true,
-    showRam: true,
-    showNetwork: true,
-    showBanner: p.showBanner !== false,
-    showHistory: p.showHistory !== false,
-    showRecentHistory: p.showRecentHistory !== false,
-    config: (p.config || {}) as Record<string, any>,
-    monitorIds: [],
-  }));
+  const statusPages: DemoStatusPage[] = [];
 
   return {
     resetAt: Date.now(),
