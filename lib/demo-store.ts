@@ -2,7 +2,7 @@ import "server-only";
 
 import { fetchCoreStatus } from "@/lib/monitoring/core-engine";
 import type { ServiceInfo } from "@/lib/monitoring/types";
-import { MOCK_MONITORS, MOCK_STATUS_PAGES } from "@/lib/mock-data";
+import { MOCK_STATUS_PAGES } from "@/lib/mock-data";
 
 type DemoMonitor = {
   id: string;
@@ -72,20 +72,7 @@ function clone<T>(value: T): T {
 }
 
 function buildInitialState(): DemoState {
-  const monitors: DemoMonitor[] = MOCK_MONITORS.map((m: any, index: number) => ({
-    id: m.id,
-    name: m.name,
-    type: m.type,
-    config: m.config || JSON.stringify({ url: m.url }),
-    url: m.url || null,
-    method: m.method || "GET",
-    interval: Number(m.interval || 60),
-    active: true,
-    lastStatus: "unknown",
-    order: Number(m.order ?? index),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  }));
+  const monitors: DemoMonitor[] = [];
 
   const statusPages: DemoStatusPage[] = MOCK_STATUS_PAGES.map((p: any) => ({
     id: p.id,
@@ -100,7 +87,7 @@ function buildInitialState(): DemoState {
     showHistory: p.showHistory !== false,
     showRecentHistory: p.showRecentHistory !== false,
     config: (p.config || {}) as Record<string, any>,
-    monitorIds: monitors.map((m) => m.id),
+    monitorIds: [],
   }));
 
   return {

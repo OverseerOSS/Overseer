@@ -32,9 +32,10 @@ import { revalidatePath } from "next/cache";
 
 export async function getDashboardData() {
   if (isDemoMode()) {
+    const monitorTypes = await getAvailableMonitorTypes();
     return {
       monitors: getDemoMonitors(),
-      monitorTypes: await getAvailableMonitorTypes(),
+      monitorTypes: monitorTypes.filter((type) => type.id !== "ssh"),
       orgName: getDemoOrgName(),
       notificationChannels: []
     };
@@ -238,6 +239,9 @@ export async function getServiceMonitors() {
 
 export async function addServiceMonitor(type: string, name: string, config: Record<string, any>) {
   if (isDemoMode()) {
+    if (type === "ssh") {
+      return { success: false, error: "SSH monitoring is disabled in demo mode" };
+    }
     const defaultInterval = getDemoDefaultPingInterval();
     const interval = config.interval ? parseInt(config.interval, 10) : defaultInterval;
     const monitor = addDemoMonitor({
