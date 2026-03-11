@@ -20,7 +20,7 @@ import { ServiceInfo, MonitorMetadata } from "@/lib/monitoring/types";
 import { GenericMonitorCard } from "./components/GenericMonitorCard";
 import { Sidebar } from "./components/Sidebar";
 import { StatusCards } from "./components/StatusCards";
-import { Plus, X, Zap, Bell } from "lucide-react";
+import { Plus, X, Zap, Bell, CircleHelp } from "lucide-react";
 import Link from "next/link";
 
 interface Monitor {
@@ -63,6 +63,7 @@ function DashboardContent() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [editingMonitorId, setEditingMonitorId] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
+  const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
 
   const handleProbe = async () => {
     const url = newMonitorConfig.url;
@@ -117,6 +118,12 @@ function DashboardContent() {
       loadDashboard();
     });
   }, []);
+
+  useEffect(() => {
+    if (isDemo) {
+      setIsDemoInfoOpen(true);
+    }
+  }, [isDemo]);
 
   const loadDashboard = async () => {
     try {
@@ -268,7 +275,7 @@ function DashboardContent() {
   );
 
   return (
-    <div className="flex h-screen bg-white dark:bg-[#0a0a0a] transition-colors duration-300">
+    <div className="flex h-screen bg-white dark:bg-[#0a0a0a] transition-colors duration-300 [zoom:90%]">
       <Sidebar
         monitors={monitors}
         orgName={orgName}
@@ -307,13 +314,24 @@ function DashboardContent() {
               <div className="w-1.5 h-1.5 bg-black/20 dark:bg-white/20" />
               <span className="opacity-40 font-bold">Analytics</span>
             </div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-3 px-8 py-4 bg-black dark:bg-white text-white dark:text-black font-black uppercase tracking-widest text-xs hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white border-2 border-black dark:border-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]"
-            >
-              <Plus className="w-5 h-5 stroke-[3]" />
-              Add Monitor
-            </button>
+            <div className="flex items-center gap-3">
+              {isDemo && (
+                <button
+                  onClick={() => setIsDemoInfoOpen(true)}
+                  className="inline-flex items-center gap-2 px-5 py-4 border-2 border-black dark:border-white text-black dark:text-white font-black uppercase tracking-widest text-[10px] hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)]"
+                >
+                  <CircleHelp className="w-4 h-4" />
+                  Demo Mode
+                </button>
+              )}
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="inline-flex items-center gap-3 px-8 py-4 bg-black dark:bg-white text-white dark:text-black font-black uppercase tracking-widest text-xs hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white border-2 border-black dark:border-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]"
+              >
+                <Plus className="w-5 h-5 stroke-[3]" />
+                Add Monitor
+              </button>
+            </div>
           </div>
         </header>
 
@@ -421,7 +439,7 @@ function DashboardContent() {
 
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/60 dark:bg-white/10 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-white dark:bg-black border-2 border-black dark:border-white max-w-xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white max-w-xl w-full max-h-[88vh] flex flex-col shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
             <div className="px-8 py-8 border-b-2 border-black dark:border-white flex items-center justify-between bg-black dark:bg-white text-white dark:text-black">
               <div>
                 <h3 className="text-3xl font-bold uppercase tracking-tighter">{editingMonitorId ? 'Edit Monitor' : 'Add Monitor'}</h3>
@@ -432,7 +450,7 @@ function DashboardContent() {
               </button>
             </div>
 
-            <form onSubmit={handleAddMonitor} className="p-8 space-y-8">
+            <form onSubmit={handleAddMonitor} className="p-8 space-y-8 overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold mb-3 uppercase tracking-widest text-black dark:text-white">Monitor Name</label>
                 <input
@@ -553,6 +571,51 @@ function DashboardContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {isDemo && isDemoInfoOpen && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-white/10 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white max-w-2xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+            <div className="px-8 py-6 border-b-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold uppercase tracking-tighter">How Demo Mode Works</h3>
+                <p className="text-[10px] uppercase font-bold tracking-widest opacity-70 mt-1">Safe sandbox behavior and limitations</p>
+              </div>
+              <button
+                onClick={() => setIsDemoInfoOpen(false)}
+                className="p-2 border-2 border-white dark:border-black hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-8 py-7 space-y-6 text-black dark:text-white">
+              <div className="p-4 border-2 border-black dark:border-white bg-black/5 dark:bg-white/5">
+                <p className="text-xs font-black uppercase tracking-widest">Demo mode is designed for safe testing.</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest opacity-70 mt-2">Changes are temporary and isolated so users can explore without touching real infrastructure.</p>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-widest">What is limited</h4>
+                <ul className="space-y-3 text-[11px] font-bold uppercase tracking-widest opacity-80">
+                  <li>Data persistence: monitors, status pages, and settings are stored in server memory only.</li>
+                  <li>Automatic reset: all demo changes reset every 15 minutes back to demo defaults.</li>
+                  <li>SSH monitoring: disabled in demo mode to avoid handling server credentials and key setup.</li>
+                  <li>Certain sensitive settings and integrations may be restricted to protect the shared demo environment.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="px-8 py-6 border-t-2 border-black dark:border-white flex justify-end">
+              <button
+                onClick={() => setIsDemoInfoOpen(false)}
+                className="px-6 py-3 border-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black font-black uppercase tracking-widest text-xs hover:bg-white dark:hover:bg-black hover:text-black dark:hover:text-white transition-all"
+              >
+                Got It
+              </button>
+            </div>
           </div>
         </div>
       )}

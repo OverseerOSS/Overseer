@@ -166,7 +166,7 @@ function SettingsContent() {
                           </>
                         )}
 
-                        {activeTab === 'notifications' && <NotificationsSettings />}
+                        {activeTab === 'notifications' && <NotificationsSettings isDemo={isDemo} />}
 
                         {activeTab === 'preferences' && (
                           <>

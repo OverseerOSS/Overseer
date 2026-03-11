@@ -2,8 +2,13 @@
 import { db } from "@/lib/db";
 
 export async function getSystemSetting(key: string, defaultValue = "") {
-  const setting = await db.systemSettings.findUnique({ where: { key } });
-  return setting?.value || defaultValue;
+  try {
+    const setting = await db.systemSettings.findUnique({ where: { key } });
+    return setting?.value || defaultValue;
+  } catch {
+    // During builds or clean installs, DB can be unavailable. Use defaults.
+    return defaultValue;
+  }
 }
 
 export async function setSystemSetting(key: string, value: string) {
